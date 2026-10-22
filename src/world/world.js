@@ -18,6 +18,7 @@ export class World {
     this.light = new LightEngine(this);
     this.dirtySections = new Set(); // section keys needing a mesh rebuild
     this.blockData = new Map(); // posKey -> container/furnace state
+    this.spawners = new Set(); // posKeys of creature-spawning totems in loaded chunks
     this.unloadedModified = new Map(); // chunkKey -> {cx, cz, blocks, meta} awaiting save
     this.fluidQueue = new Map(); // posKey -> due time
     this.time = 0; // simulation clock in seconds (for fluid scheduling)
@@ -52,6 +53,11 @@ export class World {
     this.unloadedModified.delete(chunkKey(chunk.cx, chunk.cz));
     this.light.invalidateCache();
     this.light.initChunk(chunk);
+    for (let i = 0; i < chunk.blocks.length; i++) {
+      if (chunk.blocks[i] !== B.totem) continue;
+      const lx = i % CHUNK_SIZE, lz = Math.floor(i / CHUNK_SIZE) % CHUNK_SIZE, y = Math.floor(i / (CHUNK_SIZE * CHUNK_SIZE));
+      this.spawners.add(posKey(chunk.cx * CHUNK_SIZE + lx, y, chunk.cz * CHUNK_SIZE + lz));
+    }
     for (let s = 0; s < SECTIONS_PER_CHUNK; s++) this.markSection(chunk.cx, s, chunk.cz);
     // Neighbors' border faces depend on this chunk.
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
@@ -67,6 +73,10 @@ export class World {
     if (c.modified && c.dirtySave) this.unloadedModified.set(key, { cx, cz, blocks: c.blocks, meta: c.meta });
     this.chunks.delete(key);
     this.light.invalidateCache();
+    for (const k of this.spawners) {
+      const [x, , z] = k.split(',').map(Number);
+      if (toChunk(x) === cx && toChunk(z) === cz) this.spawners.delete(k);
+    }
     return c;
   }
 
@@ -155,6 +165,8 @@ export class World {
     this.markBlockDirty(x, y, z);
     if (OPACITY[oldId] !== OPACITY[id] || EMIT[oldId] !== EMIT[id]) this.light.update(x, y, z);
     if (oldId !== id && BLOCKS[oldId].interact && !BLOCKS[id].interact) this.blockData.delete(posKey(x, y, z));
+    if (oldId === B.totem) this.spawners.delete(posKey(x, y, z));
+    if (id === B.totem) this.spawners.add(posKey(x, y, z));
     if (!silent) this.emit('blockChanged', x, y, z, oldId, id);
     this.scheduleFluid(x, y, z);
     for (const [dx, dy, dz] of NEIGHBORS6) this.neighborChanged(x + dx, y + dy, z + dz, x, y, z);

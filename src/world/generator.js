@@ -148,6 +148,17 @@ export class WorldGenerator {
     return { x, z, y: col.h + 1, type, hash: hsh };
   }
 
+  /** True if a tree trunk stands within `r` blocks of (x, z) (spawn must not be under a canopy). */
+  treeNear(x, z, r) {
+    for (let cx = Math.floor((x - r) / TREE_CELL); cx <= Math.floor((x + r) / TREE_CELL); cx++) {
+      for (let cz = Math.floor((z - r) / TREE_CELL); cz <= Math.floor((z + r) / TREE_CELL); cz++) {
+        const t = this.treeInCell(cx, cz);
+        if (t && Math.abs(t.x - x) <= r && Math.abs(t.z - z) <= r) return true;
+      }
+    }
+    return false;
+  }
+
   /** Generate a full chunk column. Returns typed arrays ready for a Chunk. */
   generateChunk(cx, cz) {
     const blocks = new Uint8Array(CHUNK_VOLUME);
@@ -347,7 +358,7 @@ export class WorldGenerator {
         if (col.biome === BIOME.lake || col.biome === BIOME.mountains) continue;
         if (this.isCave(x, col.h, z, col.h) || this.isCave(x, col.h + 1, z, col.h)) continue;
         if (surfaceStructureAt(this, x, z)) continue;
-        if (this.treeInCell(Math.floor(x / TREE_CELL), Math.floor(z / TREE_CELL))?.x === x) continue;
+        if (this.treeNear(x, z, 3)) continue;
         return { x: x + 0.5, y: col.h + 1, z: z + 0.5 };
       }
     }

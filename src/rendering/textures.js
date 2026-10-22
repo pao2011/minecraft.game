@@ -400,7 +400,7 @@ const P = {
       const h = 6 + t.rng.int(0, 8);
       const lean = (t.rng() - 0.5) * 0.25;
       for (let y = 15; y > 15 - h; y--) {
-        const v = 150 + (15 - y) * 5 + t.rng() * 20;
+        const v = 122 + (15 - y) * 5 + t.rng() * 18;
         t.set(Math.round(x), y, [v, v, v], TINT_A);
         x += lean;
       }

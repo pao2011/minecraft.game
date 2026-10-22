@@ -19,7 +19,10 @@ const SKY = {
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
+    // The voxel shader writes final colors directly; keep built-in materials consistent with it.
+    THREE.ColorManagement.enabled = false;
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
+    this.gl.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.gl.autoClear = false;
     this.gl.setClearColor(0x000000);
     this.scene = new THREE.Scene();
@@ -355,6 +358,69 @@ export class Renderer {
     g.attributes.bright.needsUpdate = true;
   }
 
+  // ---- Weather ------------------------------------------------------------------------------
+
+  /** Rain streaks / snowflakes in a box around the camera (bounded count, never world-wide). */
+  buildWeather() {
+    const N = 900;
+    this.wN = N;
+    this.wDrops = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      this.wDrops[i * 3] = (Math.random() - 0.5) * 32;
+      this.wDrops[i * 3 + 1] = Math.random() * 24;
+      this.wDrops[i * 3 + 2] = (Math.random() - 0.5) * 32;
+    }
+    const rg = new THREE.BufferGeometry();
+    this.rainPos = new Float32Array(N * 6);
+    rg.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
+    this.rain = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xa8b8d0, transparent: true, opacity: 0.5, depthWrite: false }));
+    this.rain.frustumCulled = false;
+    this.rain.visible = false;
+    this.scene.add(this.rain);
+    const sg = new THREE.BufferGeometry();
+    this.snowPos = new Float32Array(N * 3);
+    sg.setAttribute('position', new THREE.BufferAttribute(this.snowPos, 3));
+    this.snow = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.09, transparent: true, opacity: 0.85, depthWrite: false }));
+    this.snow.frustumCulled = false;
+    this.snow.visible = false;
+    this.scene.add(this.snow);
+  }
+
+  /** kind: 'rain' | 'snow' | null; strength 0..1; heightAt(x, z) gives the precipitation floor. */
+  updateWeather(dt, cam, kind, strength, heightAt) {
+    if (!this.rain) this.buildWeather();
+    const count = Math.floor(this.wN * strength * Math.max(0.3, this.quality.particles));
+    this.rain.visible = kind === 'rain' && count > 0;
+    this.snow.visible = kind === 'snow' && count > 0;
+    if (!kind || !count) return;
+    const fall = kind === 'rain' ? 16 : 2;
+    const d = this.wDrops;
+    const out = kind === 'rain' ? this.rainPos : this.snowPos;
+    // Drops keep world x/z and wrap into a 32-block box around the camera.
+    const wrap = (v, c) => c + ((((v - c + 16) % 32) + 32) % 32) - 16;
+    let n = 0;
+    for (let i = 0; i < count; i++) {
+      d[i * 3 + 1] -= fall * dt;
+      if (kind === 'snow') d[i * 3] += Math.sin(this.time + i) * dt * 0.4;
+      if (d[i * 3 + 1] < -8) {
+        d[i * 3 + 1] += 24;
+        d[i * 3] = (Math.random() - 0.5) * 32;
+        d[i * 3 + 2] = (Math.random() - 0.5) * 32;
+      }
+      const wx = wrap(d[i * 3], cam.x), wz = wrap(d[i * 3 + 2], cam.z);
+      const wy = cam.y + d[i * 3 + 1] - 6;
+      if (wy < heightAt(Math.floor(wx), Math.floor(wz))) continue; // sheltered
+      if (kind === 'rain') {
+        out.set([wx, wy, wz, wx + 0.02, wy + 0.55, wz], n * 6);
+      } else out.set([wx, wy, wz], n * 3);
+      n++;
+    }
+    const obj = kind === 'rain' ? this.rain : this.snow;
+    obj.geometry.setDrawRange(0, kind === 'rain' ? n * 2 : n);
+    obj.geometry.attributes.position.needsUpdate = true;
+    obj.material.color.setScalar(0.35 + 0.65 * (this.daylight ?? 1));
+  }
+
   // ---- First-person held item ---------------------------------------------------------------
 
   buildHand() {
@@ -434,7 +500,7 @@ export class Renderer {
     this.skyUniforms.uSunDir.value.copy(sunDir);
     this.skyUniforms.uGlow.value.set(0.9, 0.45, 0.2).multiplyScalar(sunset * 0.6);
 
-    const daylight = lerp(0.14, 1, day) * (1 - rain * 0.3);
+    const daylight = lerp(0.16, 1, day) * (1 - rain * 0.3);
     this.uniforms.uDaylight.value = daylight;
     const skyLight = v3(0.55, 0.62, 0.9).lerp(v3(1, 1, 1), day).lerp(v3(1, 0.86, 0.72), sunset * 0.5);
     this.uniforms.uSkyLight.value.copy(skyLight);

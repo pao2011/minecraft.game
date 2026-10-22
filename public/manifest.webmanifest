@@ -1,0 +1,11 @@
+{
+  "name": "Blockwild",
+  "short_name": "Blockwild",
+  "description": "An original offline voxel survival sandbox.",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#12151b",
+  "theme_color": "#12151b",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }]
+}
