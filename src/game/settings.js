@@ -31,7 +31,7 @@ export const SCHEMA = {
   textScale: num(1, 0.85, 1.3),
   crosshair: pick('plus', ['plus', 'dot', 'circle']),
   reducedMotion: bool(false),
-  brightness: num(0.4, 0, 1),
+  brightness: num(0.5, 0, 1),
   masterVolume: num(0.8, 0, 1),
   sfxVolume: num(0.8, 0, 1),
   ambientVolume: num(0.6, 0, 1),

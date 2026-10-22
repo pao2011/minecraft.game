@@ -224,7 +224,8 @@ details.adv summary { cursor: pointer; padding: 8px 0; color: var(--muted); font
 /* ---- Inventory ---- */
 .inv-screen { align-items: stretch; }
 .inv { width: min(1020px, 100%); }
-.inv .panel-body { display: flex; gap: 14px; }
+.inv .panel-body { display: flex; gap: 14px; flex-wrap: wrap; align-content: flex-start; }
+.inv .inv-col.grow { min-width: min(250px, 100%); }
 .inv-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .inv-col.grow { flex: 1; }
 .section-title { color: var(--muted); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }

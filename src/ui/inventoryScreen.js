@@ -115,11 +115,11 @@ export class InventoryScreen {
     const body = h('div.panel-body');
     const left = h('div.inv-col');
     const right = h('div.inv-col.grow');
-    if (this.tab === 'chest') left.appendChild(this.buildContainerGrid());
-    if (this.tab === 'furnace') left.appendChild(this.buildFurnace());
     left.appendChild(this.buildPlayerInventory());
     left.appendChild(this.buildCursorBar());
-    if (this.tab === 'inventory' || this.tab === 'crafting') right.appendChild(this.buildCrafting());
+    if (this.tab === 'chest') right.appendChild(this.buildContainerGrid());
+    else if (this.tab === 'furnace') right.appendChild(this.buildFurnace());
+    else if (this.tab === 'inventory' || this.tab === 'crafting') right.appendChild(this.buildCrafting());
     else if (this.tab === 'creative') right.appendChild(this.buildCreative());
     body.append(left);
     if (right.childElementCount) body.append(right);

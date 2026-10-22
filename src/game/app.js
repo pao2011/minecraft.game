@@ -19,6 +19,7 @@ import { BLOCKS, B } from '../world/blocks.js';
 import { ITEMS } from '../items/items.js';
 import { collidesAt } from '../entities/physics.js';
 import { DIFFICULTY } from '../config/constants.js';
+import { structuresIn } from '../world/structures.js';
 
 const uid = () => `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 
@@ -98,7 +99,7 @@ export class App {
     requestAnimationFrame((t) => this.loop(t));
     // Read-only handles for automated tests and debugging; nothing here is shown to players.
     window.__blockwild = this;
-    window.__bw = { BLOCKS, B, ITEMS, collidesAt, DIFFICULTY };
+    window.__bw = { BLOCKS, B, ITEMS, collidesAt, DIFFICULTY, structuresIn };
     log.info('Blockwild started');
   }
 

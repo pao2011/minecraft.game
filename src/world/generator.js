@@ -198,8 +198,10 @@ export class WorldGenerator {
     let subDepth = 3 + (col.detail > 0.2 ? 1 : 0);
     let deep = b.deep ? B[b.deep] : B.stone;
     if (biome === BIOME.mountains) {
-      if (h > 100) top = B.snow;
-      else if (h > 88) top = sub = B.stone;
+      if (h > 100) {
+        top = B.snow;
+        sub = B.stone;
+      } else if (h > 88) top = sub = B.stone;
     } else if (biome === BIOME.rocky) {
       const d = this.nSurf.noise2(x / 9, z / 9);
       top = d > 0.45 ? B.stone : d < -0.5 ? B.gravel : col.hu > 0.15 && d < -0.1 ? B.grass : B.coarse_dirt;

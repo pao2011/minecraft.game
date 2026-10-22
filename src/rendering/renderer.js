@@ -504,8 +504,8 @@ export class Renderer {
     this.uniforms.uDaylight.value = daylight;
     const skyLight = v3(0.55, 0.62, 0.9).lerp(v3(1, 1, 1), day).lerp(v3(1, 0.86, 0.72), sunset * 0.5);
     this.uniforms.uSkyLight.value.copy(skyLight);
-    this.uniforms.uGamma.value = brightness * 0.7;
-    this.uniforms.uMinLight.value = 0.02 + brightness * 0.06;
+    this.uniforms.uGamma.value = brightness * 0.9;
+    this.uniforms.uMinLight.value = 0.025 + brightness * 0.07;
 
     const far = renderDistance * CHUNK_SIZE;
     let fogColor = horizon.clone();

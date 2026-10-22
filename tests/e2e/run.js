@@ -575,7 +575,7 @@ async function main() {
       g.record.mode = 'creative';
       while (!g.world.isLoaded(p.pos.x, p.pos.z) && performance.now() - t0 < 30000) await sleepMs(50);
       const firstChunkMs = performance.now() - t0;
-      while (g.meshQueue.size > 0 && performance.now() - t0 < 60000) await sleepMs(100);
+      while (g.loadProgress() < 0.999 && performance.now() - t0 < 60000) await sleepMs(100);
       const areaMs = performance.now() - t0;
       // Many creatures at once.
       for (let i = 0; i < 16; i++) g.entities.spawnMob(['grazer', 'snout', 'cluck', 'woolly'][i % 4], { x: p.pos.x + (i % 4) * 2 - 4, y: p.pos.y, z: p.pos.z + Math.floor(i / 4) * 2 - 4 });
@@ -639,6 +639,209 @@ async function main() {
     await page.click('.inv .panel-head .icon-btn');
     const worlds = await G(page, async () => (await window.__blockwild.storage.listWorlds()).map((w) => w.mode));
     assert(worlds.includes('creative') && worlds.includes('survival'), 'world list stores modes');
+  });
+
+  const freshWorld = async (name, opts = {}) => {
+    if (await G(page, () => !!window.__blockwild.game)) {
+      await page.evaluate(() => window.__blockwild.quitToMenu());
+      await page.waitForFunction(() => document.querySelector('.menu-main'), null, { timeout: 30000 });
+    }
+    await createWorld(page, { name, seed: `e2e-${name}`, ...opts });
+    await flatPad(page);
+  };
+
+  await scenario('M', 'Combat: melee a creature until it dies and drops loot; hostiles hurt the player', async () => {
+    await freshWorld('Gamma');
+    const mob = await G(page, () => {
+      const g = window.__blockwild.game;
+      g.record.rules.mobSpawning = false;
+      const p = g.player;
+      p.yaw = 0;
+      p.pitch = -0.25;
+      p.inventory.set(0, { id: 'stone_sword', count: 1 });
+      p.selected = 0;
+      const m = g.entities.spawnMob('grazer', { x: p.pos.x, y: p.pos.y, z: p.pos.z - 2.2 });
+      m.update = function (dt) { this.hurtTimer -= dt; if (this.dead) { this.deathTimer -= dt; if (this.deathTimer <= 0) this.removed = true; } }; // hold still
+      return m.id;
+    });
+    const mb = await center(page, '.t-mine');
+    let dead = false;
+    for (let i = 0; i < 12 && !dead; i++) {
+      await touch.tap(mb.x, mb.y, 30);
+      await sleep(520);
+      dead = await G(page, (id) => !window.__blockwild.game.entities.mobs.some((m) => m.id === id && !m.dead), mob);
+    }
+    assert(dead, 'creature died from melee hits');
+    await sleep(1500);
+    const loot = await G(page, () => window.__blockwild.game.player.inventory.count('raw_steak') + window.__blockwild.game.entities.items.filter((i) => i.stack.id === 'raw_steak').length);
+    assert(loot > 0, 'loot dropped');
+    const dur = await G(page, () => window.__blockwild.game.player.inventory.get(0)?.damage || 0);
+    assert(dur > 0, 'sword lost durability');
+    const hurt = await G(page, async () => {
+      const g = window.__blockwild.game;
+      const p = g.player;
+      g.record.time.tod = 0.75;
+      const m = g.entities.spawnMob('shambler', { x: p.pos.x + 1.2, y: p.pos.y, z: p.pos.z });
+      const h0 = p.health;
+      await new Promise((r) => setTimeout(r, 2500));
+      g.entities.removeMob(m);
+      g.entities.mobs = g.entities.mobs.filter((x) => x !== m);
+      g.record.time.tod = 0.2;
+      return { h0, h1: p.health };
+    });
+    assert(hurt.h1 < hurt.h0, `hostile melee damaged the player (${hurt.h0} -> ${hurt.h1})`);
+    return `player ${hurt.h0} -> ${hurt.h1} hp`;
+  });
+
+  await scenario('N', 'Farming: till, plant, fertilize, harvest', async () => {
+    const r = await G(page, async () => {
+      const g = window.__blockwild.game;
+      const { B } = window.__bw;
+      const p = g.player;
+      const x = Math.floor(p.pos.x), y = Math.floor(p.pos.y) - 1, z = Math.floor(p.pos.z) - 2;
+      g.world.setBlock(x, y, z, B.grass);
+      g.world.setBlock(x + 1, y, z, B.water);
+      p.inventory.set(0, { id: 'wood_hoe', count: 1 });
+      p.inventory.set(1, { id: 'wheat_seeds', count: 3 });
+      p.inventory.set(2, { id: 'bone_meal', count: 10 });
+      const aim = () => {
+        const eye = p.eye;
+        const tx = x + 0.5 - eye.x, ty = y + 1 - eye.y, tz = z + 0.5 - eye.z;
+        p.yaw = Math.atan2(-tx, -tz);
+        p.pitch = Math.atan2(ty, Math.hypot(tx, tz));
+      };
+      const use = async (slot) => {
+        p.selected = slot;
+        aim();
+        await new Promise((r) => setTimeout(r, 120));
+        g.interaction.target = g.interaction.computeTarget();
+        g.interaction.handleUse(true);
+      };
+      await use(0);
+      const tilled = g.world.getBlock(x, y, z) === B.farmland;
+      await use(1);
+      const planted = g.world.getBlock(x, y + 1, z) === B.wheat;
+      // Aim at the crop itself for bone meal.
+      for (let i = 0; i < 6 && (g.world.getMeta(x, y + 1, z) & 7) < 7; i++) {
+        p.selected = 2;
+        const eye = p.eye;
+        const tx = x + 0.5 - eye.x, ty = y + 1.15 - eye.y, tz = z + 0.5 - eye.z;
+        p.yaw = Math.atan2(-tx, -tz);
+        p.pitch = Math.atan2(ty, Math.hypot(tx, tz));
+        await new Promise((r) => setTimeout(r, 80));
+        g.interaction.target = g.interaction.computeTarget();
+        g.interaction.handleUse(true);
+      }
+      const stage = g.world.getMeta(x, y + 1, z) & 7;
+      const before = p.inventory.count('wheat');
+      g.lastBreakTool = null;
+      g.world.breakBlock(x, y + 1, z, 'player');
+      p.pos = { x: x + 0.5, y: y + 1, z: z + 0.5 };
+      await new Promise((r) => setTimeout(r, 1500));
+      // Random ticks can also hydrate the soil next to water.
+      g.world.randomTickBlock(x, y, z, B.farmland, () => 0.5);
+      return { tilled, planted, stage, wheat: p.inventory.count('wheat') - before, wet: g.world.getMeta(x, y, z) & 1 };
+    });
+    assert(r.tilled, 'hoe tilled the soil');
+    assert(r.planted, 'seeds planted on farmland');
+    assert(r.stage === 7, `bone meal grew the crop to maturity (stage ${r.stage})`);
+    assert(r.wheat >= 1, 'harvest yielded wheat');
+    assert(r.wet === 1, 'farmland near water becomes hydrated');
+  });
+
+  await scenario('O', 'Bed: sleeping at night skips to morning and sets the respawn point', async () => {
+    const r = await G(page, async () => {
+      const g = window.__blockwild.game;
+      const { B } = window.__bw;
+      const p = g.player;
+      const x = Math.floor(p.pos.x) + 2, y = Math.floor(p.pos.y), z = Math.floor(p.pos.z);
+      g.world.setBlock(x, y, z, B.bed, 0);
+      g.world.setBlock(x, y, z - 1, B.bed, 4);
+      g.record.time.tod = 0.8;
+      const day0 = g.record.time.day;
+      g.useBed(x, y, z);
+      await new Promise((r) => setTimeout(r, 2000));
+      return { tod: g.record.time.tod, dayAdvanced: g.record.time.day === day0 + 1, spawn: p.spawnPoint, x, y, z };
+    });
+    assert(r.tod < 0.1 && r.dayAdvanced, `time skipped to morning (${r.tod})`);
+    assert(r.spawn && r.spawn.x === r.x && r.spawn.z === r.z, 'respawn point set at the bed');
+  });
+
+  await scenario('P', 'Furnace: smelting through the UI (tap-to-move stacks)', async () => {
+    await G(page, () => {
+      const g = window.__blockwild.game;
+      const { B } = window.__bw;
+      const p = g.player;
+      p.inventory.clear();
+      p.inventory.set(0, { id: 'raw_iron', count: 2 });
+      p.inventory.set(1, { id: 'coal', count: 1 });
+      const x = Math.floor(p.pos.x) - 2, y = Math.floor(p.pos.y), z = Math.floor(p.pos.z);
+      g.world.setBlock(x, y, z, B.furnace, 1);
+      g.openContainer(x, y, z, 'furnace');
+      window.__furnacePos = { x, y, z };
+    });
+    await page.waitForFunction(() => window.__blockwild.state === 'inventory');
+    // Hotbar slot 0 -> furnace input; hotbar slot 1 -> fuel. Slots: [player 36..., furnace 3]
+    const hot = page.locator('.slot.hotbar-row');
+    const fslots = page.locator('.furnace-ui .slot');
+    await hot.nth(0).click();
+    await fslots.nth(0).click();
+    await hot.nth(1).click();
+    await fslots.nth(1).click();
+    await page.screenshot({ path: `${OUT}/P-furnace.png` });
+    await page.waitForFunction(() => {
+      const g = window.__blockwild.game;
+      const p = window.__furnacePos;
+      const st = g.world.blockData.get(`${p.x},${p.y},${p.z}`);
+      return st?.slots[2]?.count === 2;
+    }, null, { timeout: 30000, polling: 250 });
+    await fslots.nth(2).click();
+    await hot.nth(5).click();
+    const ingots = await G(page, () => window.__blockwild.game.player.inventory.count('iron_ingot'));
+    assert(ingots === 2, `took the ingots out (${ingots})`);
+    await page.click('.inv .panel-head .icon-btn');
+  });
+
+  await scenario('Q', 'Doors: Use toggles open/closed and changes collision', async () => {
+    await G(page, () => { const p = window.__blockwild.game.player; p.pos.x += 9; p.selected = 8; });
+    await flatPad(page);
+    const r = await G(page, async () => {
+      const g = window.__blockwild.game;
+      const { B } = window.__bw;
+      const p = g.player;
+      const x = Math.floor(p.pos.x), y = Math.floor(p.pos.y), z = Math.floor(p.pos.z) - 2;
+      g.world.setBlock(x, y, z, B.door, 0);
+      g.world.setBlock(x, y + 1, z, B.door, 8);
+      const probe = { width: 0.1, height: 0.5 };
+      const at = { x: x + 0.5, y: y + 0.3, z: z + 0.09 };
+      const boxesClosed = window.__bw.collidesAt(g.world, probe, at) ? 1 : 0;
+      p.yaw = 0;
+      p.pitch = -0.2;
+      await new Promise((r) => setTimeout(r, 150));
+      g.interaction.target = g.interaction.computeTarget();
+      g.interaction.handleUse(true);
+      const open = (g.world.getMeta(x, y, z) & 4) !== 0 && (g.world.getMeta(x, y + 1, z) & 4) !== 0;
+      const boxesOpen = window.__bw.collidesAt(g.world, probe, at) ? 1 : 0;
+      return { open, boxesClosed, boxesOpen };
+    });
+    assert(r.open, 'both door halves opened');
+    assert(r.boxesClosed > r.boxesOpen, `opening moves the door's collision (${r.boxesClosed} -> ${r.boxesOpen})`);
+  });
+
+  await scenario('R', 'Peaceful difficulty: no hostile creatures spawn at night', async () => {
+    await freshWorld('Calm', { difficulty: 'peaceful' });
+    const r = await G(page, async () => {
+      const g = window.__blockwild.game;
+      g.record.time.tod = 0.75;
+      for (let i = 0; i < 60; i++) {
+        g.entities.spawnTimer = 0;
+        g.entities.updateSpawning(1);
+      }
+      g.entities.spawnMob('shambler', { ...g.player.pos, x: g.player.pos.x + 3 });
+      await new Promise((r) => setTimeout(r, 500));
+      return g.entities.mobs.filter((m) => m.def.hostile).length;
+    });
+    assert(r === 0, `no hostiles on Peaceful (${r})`);
   });
 
   await scenario('J', 'Settings persist across reloads', async () => {
