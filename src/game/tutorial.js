@@ -70,10 +70,10 @@ export class Tutorial {
     if (!this.el) this.render();
     if (s.id === 'move') {
       this.moved += Math.hypot(inp.moveX, inp.moveZ) * dt;
-      if (this.moved > 1.5) this.advance();
+      if (this.moved > 1) this.advance();
     } else if (s.id === 'look') {
       this.looked += Math.abs(inp.lookDX) + Math.abs(inp.lookDY);
-      if (this.looked > 1.2) this.advance();
+      if (this.looked > 0.6) this.advance();
     } else if (s.id === 'jump') {
       if (inp.edges.has('jumpPressed') && game.player.onGround === false) this.advance();
       else if (inp.edges.has('jumpPressed')) this.pendingJump = true;

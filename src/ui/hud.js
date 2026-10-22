@@ -136,7 +136,7 @@ export class HUD {
     const hours = Math.floor(((tod * 24 + 6) % 24));
     const mem = performance.memory ? `${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)} MB` : 'n/a';
     this.debug.textContent = [
-      `Blockwild  ${fps.toFixed(0)} fps  (${(game.stats.avgFrameMs ?? 0).toFixed(1)} ms avg)`,
+      `Blockwild  ${fps.toFixed(0)} fps  (${(game.stats.avgFrameMs ?? 0).toFixed(1)} ms avg)  cpu update ${(game.stats.updateMs ?? 0).toFixed(1)} ms, render ${(game.stats.renderMs ?? 0).toFixed(1)} ms`,
       `XYZ ${p.pos.x.toFixed(2)} ${p.pos.y.toFixed(2)} ${p.pos.z.toFixed(2)}`,
       `Chunk ${Math.floor(x / 16)}, ${Math.floor(z / 16)}  local ${((x % 16) + 16) % 16} ${y} ${((z % 16) + 16) % 16}`,
       `Facing ${facing}`,

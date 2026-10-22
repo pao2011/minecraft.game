@@ -166,9 +166,11 @@ export class App {
     const blockGameplay = this.state !== 'playing';
     // While a menu is open the world keeps simulating (except when paused), but player input is ignored.
     const gameInput = blockGameplay ? { ...inp, moveX: 0, moveZ: 0, lookDX: 0, lookDY: 0, jump: false, jumpPressed: false, sneak: inp.sneak, mine: false, use: false, edges: new Set(), hotbar: null, scroll: 0 } : inp;
+    const t0 = performance.now();
     g.update(dt, gameInput, { paused });
     g.postUpdate();
     this.ui.hud.update(g, dt);
+    const t1 = performance.now();
     if (this.state === 'playing') this.tutorial.update(dt, inp, g);
     if (this.ui.inventory.isOpen) {
       this.ui.inventory.update();
@@ -179,6 +181,10 @@ export class App {
       }
     }
     g.render(dt);
+    // CPU cost split: simulation+UI vs. render submission (GPU work is not included).
+    const t2 = performance.now();
+    g.stats.updateMs = (g.stats.updateMs ?? 0) * 0.95 + (t1 - t0) * 0.05;
+    g.stats.renderMs = (g.stats.renderMs ?? 0) * 0.95 + (t2 - t1) * 0.05;
     const needClick = this.state === 'playing' && !this.input.touchMode && !this.input.pointerLocked;
     this.clickToPlay.classList.toggle('hidden', !needClick);
   }

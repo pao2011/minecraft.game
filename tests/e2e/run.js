@@ -16,10 +16,12 @@ let BASE = process.env.BW_URL;
 
 async function startServer() {
   if (BASE) return;
-  server = spawn('npx', ['vite', 'preview', '--port', '4173', '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  // Own process group so the npx -> vite child can be stopped as a whole.
+  server = spawn('npx', ['vite', 'preview', '--port', '4173', '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   BASE = 'http://localhost:4173/';
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('preview server did not start')), 30000);
+    server.stderr.on('data', (d) => process.stderr.write(d));
     server.stdout.on('data', (d) => {
       if (String(d).includes('4173')) {
         clearTimeout(t);
@@ -27,6 +29,16 @@ async function startServer() {
       }
     });
   });
+}
+
+function stopServer() {
+  if (!server) return;
+  try {
+    process.kill(-server.pid, 'SIGTERM');
+  } catch {
+    server.kill();
+  }
+  server = null;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -588,13 +600,13 @@ async function main() {
       p.flying = false;
       return {
         base, mobs, firstChunkMs, areaMs, saveMs,
-        chunks: g.world.chunks.size, meshMs: g.stats.meshMs, mobCount: g.entities.mobs.length,
+        chunks: g.world.chunks.size, meshMs: g.stats.meshMs, mobCount: g.entities.mobs.length, updateMs: g.stats.updateMs, renderMs: g.stats.renderMs,
         heapMB: performance.memory ? performance.memory.usedJSHeapSize / 1048576 : null,
       };
     });
     writeFileSync(`${OUT}/perf.json`, JSON.stringify(res, null, 2));
     assert(res.mobCount >= 25, 'creatures spawned for the stress test');
-    return `frame avg ${res.base.avg.toFixed(1)}ms (p95 ${res.base.p95.toFixed(1)}) · 30 mobs avg ${res.mobs.avg.toFixed(1)}ms · new area ${(res.areaMs / 1000).toFixed(1)}s · mesh ${res.meshMs.toFixed(2)}ms/section · save ${res.saveMs.toFixed(0)}ms · heap ${res.heapMB?.toFixed(0)}MB`;
+    return `frame avg ${res.base.avg.toFixed(1)}ms (p95 ${res.base.p95.toFixed(1)}) · cpu update ${res.updateMs.toFixed(1)}ms · 30 mobs avg ${res.mobs.avg.toFixed(1)}ms · new area ${(res.areaMs / 1000).toFixed(1)}s · mesh ${res.meshMs.toFixed(2)}ms/section · save ${res.saveMs.toFixed(0)}ms · heap ${res.heapMB?.toFixed(0)}MB`;
   });
 
   await scenario('I', 'Creative mode: flight, instant break, unlimited blocks, no damage', async () => {
@@ -844,6 +856,29 @@ async function main() {
     assert(r === 0, `no hostiles on Peaceful (${r})`);
   });
 
+  await scenario('T', 'Tutorial: hints advance from real actions and can be skipped', async () => {
+    if (await G(page, () => !!window.__blockwild.game)) {
+      await page.evaluate(() => window.__blockwild.quitToMenu());
+      await page.waitForFunction(() => document.querySelector('.menu-main'), null, { timeout: 30000 });
+    }
+    await G(page, () => window.__blockwild.tutorial.restart());
+    await createWorld(page, { name: 'Learner', seed: 'e2e-tutorial' });
+    await page.waitForSelector('.hint-banner');
+    const step = () => G(page, () => window.__blockwild.settings.get('tutorialStep'));
+    assert((await step()) === 0, 'starts at the first step');
+    const joy = await center(page, '.joy-base');
+    await touch.drag(40, joy.x, joy.y, joy.x, joy.y - 60, 6, 1400);
+    await sleep(200);
+    assert((await step()) === 1, 'walking completed the move step');
+    await touch.drag(41, W * 0.6, H * 0.4, W * 0.6 + 200, H * 0.4, 10);
+    await sleep(200);
+    assert((await step()) === 2, 'looking completed the look step');
+    await page.screenshot({ path: `${OUT}/T-tutorial.png` });
+    await page.click('.hint-banner button:has-text("Skip tutorial")');
+    assert(await G(page, () => window.__blockwild.settings.get('tutorialDone')), 'skip ends the tutorial');
+    assert((await page.locator('.hint-banner').count()) === 0, 'banner removed');
+  });
+
   await scenario('J', 'Settings persist across reloads', async () => {
     await page.evaluate(() => window.__blockwild.quitToMenu());
     await page.waitForFunction(() => document.querySelector('.menu-main'), null, { timeout: 30000 });
@@ -869,9 +904,9 @@ async function main() {
       tx.objectStore('worlds').put({ id: 'broken-1', name: 'Broken', saveVersion: 2 }); // no seed
       const worlds = await new Promise((res) => { const r = tx.objectStore('worlds').getAll(); r.onsuccess = () => res(r.result); });
       const alpha = worlds.find((w) => w.name === 'Alpha');
-      // Corrupt one saved chunk of the Alpha world.
-      const keys = await new Promise((res) => { const r = tx.objectStore('chunks').getAllKeys(IDBKeyRange.bound(`${alpha.id}/`, `${alpha.id}/￿`)); r.onsuccess = () => res(r.result); });
-      tx.objectStore('chunks').put({ v: 1, blocks: new Uint8Array([1, 2, 3]), meta: new Uint8Array([0]) }, keys[0]);
+      // Corrupt the saved chunk the Alpha player stands in, so loading must hit it.
+      const cx = Math.floor(Math.floor(alpha.player.pos.x) / 16), cz = Math.floor(Math.floor(alpha.player.pos.z) / 16);
+      tx.objectStore('chunks').put({ v: 1, blocks: new Uint8Array([1, 2, 3]), meta: new Uint8Array([0]) }, `${alpha.id}/${cx},${cz}`);
       await new Promise((res) => (tx.oncomplete = res));
     });
     await page.click('text=Worlds');
@@ -888,8 +923,9 @@ async function main() {
       throw new Error(`load stuck: ${JSON.stringify(dbg)} errors=${page.errors.join(' | ')}`);
     }
     const warned = await page.locator('.toast:has-text("damaged area")').count();
+    assert(warned > 0, 'player was told about the regenerated area');
     assert(page.errors.filter((e) => !e.includes('damaged') && !e.includes('Corrupt') && !e.includes('cells')).length === 0, `no unexpected page errors: ${page.errors.join(' | ')}`);
-    return warned ? 'corrupt chunk regenerated with a warning' : 'corrupt chunk was outside the loaded area';
+    return 'corrupt chunk regenerated with a warning';
   });
 
   await ctx.close();
@@ -926,7 +962,7 @@ async function main() {
   });
 
   await browser.close();
-  if (server) server.kill();
+  stopServer();
   const passed = results.filter((r) => r.ok).length;
   console.log(`\n${passed}/${results.length} scenarios passed`);
   writeFileSync(`${OUT}/e2e-report.json`, JSON.stringify(results, null, 2));
@@ -935,6 +971,6 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
-  if (server) server.kill();
+  stopServer();
   process.exit(1);
 });

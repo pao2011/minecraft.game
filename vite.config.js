@@ -5,7 +5,7 @@ export default defineConfig({
   build: {
     outDir: 'build/web',
     emptyOutDir: true,
-    target: 'es2020',
+    target: ['es2020', 'chrome87', 'safari14'],
     chunkSizeWarningLimit: 1200,
     assetsInlineLimit: 0,
   },
