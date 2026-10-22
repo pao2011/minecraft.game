@@ -1,0 +1,23 @@
+{
+  "name": "blockwild",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Blockwild - an original offline voxel survival sandbox for Android and mobile browsers",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host --port 4173",
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "test:e2e": "node tests/e2e/run.js",
+    "android:sync": "node scripts/sync-android.js",
+    "android:build": "npm run build && npm run android:sync && cd android && ./gradlew assembleDebug && cd .. && node scripts/copy-apk.js"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1",
+    "vite": "8.2.4"
+  }
+}

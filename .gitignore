@@ -1,0 +1,11 @@
+node_modules/
+build/
+.DS_Store
+*.log
+test-results/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/www/
+.vite/
