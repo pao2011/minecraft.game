@@ -400,7 +400,7 @@ const P = {
       const h = 6 + t.rng.int(0, 8);
       const lean = (t.rng() - 0.5) * 0.25;
       for (let y = 15; y > 15 - h; y--) {
-        const v = 150 + (15 - y) * 5 + t.rng() * 20;
+        const v = 122 + (15 - y) * 5 + t.rng() * 18;
         t.set(Math.round(x), y, [v, v, v], TINT_A);
         x += lean;
       }
@@ -653,10 +653,23 @@ const P = {
   crack_6: (t) => crack(t, 6),
   crack_7: (t) => crack(t, 7),
   crystal_block(t) {
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const facet = ((x + y) >> 2) % 3;
-      t.set(x, y, vary([[80, 170, 230], [120, 200, 250], [60, 140, 210]][facet], 8, t.rng));
+    // Faceted crystal: Voronoi facets, each shaded as if lit from the top-left, with glints.
+    const seeds = Array.from({ length: 7 }, () => [t.rng() * 16, t.rng() * 16, 0.7 + t.rng() * 0.5]);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        let best = 99, second = 99, bi = 0;
+        seeds.forEach(([sx, sy], i) => {
+          for (const ox of [-16, 0, 16]) for (const oy of [-16, 0, 16]) {
+            const d = Math.hypot(x - sx - ox, y - sy - oy);
+            if (d < best) { second = best; best = d; bi = i; } else if (d < second) second = d;
+          }
+        });
+        const edge = second - best < 1;
+        const f = seeds[bi][2];
+        t.set(x, y, vary(edge ? [170, 230, 255] : mul([70, 160, 225], f), 6, t.rng));
+      }
     }
+    for (let k = 0; k < 5; k++) t.set(t.rng.int(1, 14), t.rng.int(1, 14), [235, 250, 255]);
   },
   bookshelf(t) {
     planks(t, [160, 124, 76]);

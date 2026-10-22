@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Viewer</title>
+<style>html,body{margin:0;height:100%;background:#000}canvas{width:100%;height:100%;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { World } from '../src/world/world.js';
+import { ChunkStreamer } from '../src/world/streamer.js';
+import { Renderer } from '../src/rendering/renderer.js';
+import { meshSection, createPad } from '../src/world/mesher.js';
+const q = new URLSearchParams(location.search);
+const world = new World(q.get('seed') || 'hello');
+const r = new Renderer(document.getElementById('c'));
+const sp = world.generator.findSpawn();
+const pose = { x: sp.x, y: sp.y + Number(q.get('up') || 12), z: sp.z, yaw: Number(q.get('yaw') || 0.6), pitch: Number(q.get('pitch') || -0.35) };
+const streamer = new ChunkStreamer(world, { useWorkers: q.get('workers') === '1' });
+const pad = createPad();
+const dist = Number(q.get('dist') || 4);
+let frames = 0;
+window.stats = { meshed: 0 };
+function frame() {
+  streamer.update(pose.x, pose.z, dist, 50);
+  for (const key of world.takeDirtySections()) {
+    const ck = Math.floor(key / 16), sy = key % 16;
+    const cx = Math.floor(ck / 65536) - 32768, cz = (ck % 65536) - 32768;
+    if (!world.neighborsReady(cx, cz)) { world.dirtySections.add(key); continue; }
+    world.fillPad(cx, sy, cz, pad);
+    r.uploadSection(key, cx, sy, cz, meshSection(pad, world.getChunk(cx, cz).climate));
+    window.stats.meshed++;
+  }
+  r.setEnvironment({ timeOfDay: Number(q.get('tod') || 0.15), renderDistance: dist, rain: Number(q.get('rain') || 0) });
+  r.render(pose, 1 / 60);
+  frames++;
+  window.stats.frames = frames;
+  window.stats.chunks = world.chunks.size;
+  requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>

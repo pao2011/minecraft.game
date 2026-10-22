@@ -1,0 +1,35 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.pao2011.blockwild'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.pao2011.blockwild'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // No signing config is committed: release builds must be signed with your own key.
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // Game assets are already minified by Vite; keep them uncompressed for fast WebView reads.
+    androidResources {
+        noCompress += ['js', 'css', 'html', 'png', 'webmanifest']
+    }
+}
+
+// No third-party libraries: the WebView host uses only the Android framework.
