@@ -15,9 +15,14 @@ export const TILE_NAMES = [
   'hay_side', 'hay_top', 'iron_block', 'gold_block', 'crystal_lamp', 'totem_side', 'totem_top', 'crack_0',
   'crack_1', 'crack_2', 'crack_3', 'crack_4', 'crack_5', 'crack_6', 'crack_7', 'snow_grass_top',
   'crystal_block', 'bookshelf', 'pane_top', 'fence_post',
+  'tidestone_ore', 'verdant_ore', 'quartz_ore', 'nether_gold_ore', 'abyssal_ore', 'coal_block', 'copper_block', 'tidestone_block',
+  'verdant_block', 'ember_block', 'starstone_block', 'abyssal_block', 'quartz_block', 'quartz_pillar', 'cinderrock', 'lumen_stone',
+  'magma', 'cinder_bricks', 'obsidian', 'void_stone', 'frame_top', 'frame_side', 'frame_eye', 'nether_portal',
+  'end_portal', 'cobweb', 'potatoes_0', 'potatoes_1', 'potatoes_2', 'potatoes_3', 'void_crystal', 'tnt_side',
+  'tnt_top',
 ];
 
 export const TILE = Object.fromEntries(TILE_NAMES.map((n, i) => [n, i]));
 export const ATLAS_COLS = 16;
-export const ATLAS_ROWS = 8;
+export const ATLAS_ROWS = 16;
 export const TILE_PX = 16;

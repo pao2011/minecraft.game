@@ -96,6 +96,19 @@ function cleanPos(p, fallback) {
   return { x: clampNum(x, -WORLD_BORDER, WORLD_BORDER, 0), y: clampNum(y, 1, WORLD_HEIGHT + 64, 80), z: clampNum(z, -WORLD_BORDER, WORLD_BORDER, 0) };
 }
 
+function cleanContainers(src) {
+  const out = {};
+  if (!src || typeof src !== 'object') return out;
+  for (const [key, c] of Object.entries(src)) {
+    if (!/^-?\d+,-?\d+,-?\d+$/.test(key) || !c || typeof c !== 'object') continue;
+    if (c.type === 'chest') out[key] = { type: 'chest', slots: cleanSlots(c.slots, 27) };
+    else if (c.type === 'furnace') {
+      out[key] = { type: 'furnace', slots: cleanSlots(c.slots, 3), burn: clampNum(c.burn, 0, 1000, 0), burnMax: clampNum(c.burnMax, 0, 1000, 0), progress: clampNum(c.progress, 0, 100, 0) };
+    }
+  }
+  return out;
+}
+
 /** Upgrade older records in place, one version step at a time. */
 export function migrate(rec) {
   const r = { ...rec };
@@ -107,6 +120,12 @@ export function migrate(rec) {
     if (r.inventory && r.player && !r.player.inventory) r.player = { ...r.player, inventory: r.inventory };
     delete r.inventory;
     v = 2;
+  }
+  if (v < 3) {
+    // v2 -> v3: dimensions, offhand slot and the Void Drake flag were added.
+    r.flags = { dragonDefeated: false, ...(r.flags || {}) };
+    r.dimContainers = r.dimContainers || {};
+    v = 3;
   }
   r.saveVersion = v;
   return r;
@@ -149,7 +168,9 @@ export function normalizeWorld(raw) {
     starterBonus: !!r.starterBonus,
     palette: Array.isArray(r.palette) ? r.palette.map((k) => (typeof k === 'string' ? k : null)) : currentPalette(),
     thumbnail: typeof r.thumbnail === 'string' && r.thumbnail.startsWith('data:image/') ? r.thumbnail : null,
-    containers: {},
+    containers: cleanContainers(r.containers),
+    dimContainers: { nether: cleanContainers(r.dimContainers?.nether), end: cleanContainers(r.dimContainers?.end) },
+    flags: { dragonDefeated: !!r.flags?.dragonDefeated },
     entities: [],
     player: {
       pos: cleanPos(p.pos, null),
@@ -162,6 +183,8 @@ export function normalizeWorld(raw) {
       air: clampNum(p.air, 0, 10, 10),
       inventory: cleanSlots(p.inventory, 36),
       armor: cleanSlots(p.armor, 4),
+      offhand: cleanSlots(p.offhand, 1),
+      dim: ['overworld', 'nether', 'end'].includes(p.dim) ? p.dim : 'overworld',
       selected: Math.floor(clampNum(p.selected, 0, 8, 0)),
       spawn: cleanPos(p.spawn, null),
       flying: !!p.flying,
@@ -170,17 +193,6 @@ export function normalizeWorld(raw) {
     warnings,
   };
   if (p.pos && !world.player.pos) warnings.push('Player position was invalid; moved to spawn');
-  if (r.containers && typeof r.containers === 'object') {
-    for (const [key, c] of Object.entries(r.containers)) {
-      if (!/^-?\d+,-?\d+,-?\d+$/.test(key) || !c || typeof c !== 'object') continue;
-      if (c.type === 'chest') world.containers[key] = { type: 'chest', slots: cleanSlots(c.slots, 27) };
-      else if (c.type === 'furnace') {
-        world.containers[key] = {
-          type: 'furnace', slots: cleanSlots(c.slots, 3), burn: clampNum(c.burn, 0, 1000, 0), burnMax: clampNum(c.burnMax, 0, 1000, 0), progress: clampNum(c.progress, 0, 100, 0),
-        };
-      }
-    }
-  }
   if (Array.isArray(r.entities)) {
     for (const e of r.entities.slice(0, 64)) {
       const pos = cleanPos(e?.pos, null);

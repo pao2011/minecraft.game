@@ -54,6 +54,7 @@ export class Renderer {
       uFogFar: { value: 80 },
       uMinLight: { value: 0.03 },
       uGamma: { value: 0.25 },
+      uHeld: { value: new THREE.Vector4(0, 0, 0, 0) },
     };
     this.opaqueMat = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: chunkVertex, fragmentShader: chunkFragment });
     this.transMat = new THREE.ShaderMaterial({
@@ -426,51 +427,62 @@ export class Renderer {
   buildHand() {
     this.handScene = new THREE.Scene();
     this.handCamera = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
-    this.handGroup = new THREE.Group();
-    this.handScene.add(this.handGroup);
-    this.handMesh = null;
-    this.handKey = null;
+    const mk = () => {
+      const group = new THREE.Group();
+      this.handScene.add(group);
+      return { group, mesh: null, key: null };
+    };
+    this.hands = { main: mk(), off: mk() };
     this.swing = 0;
     this.bob = 0;
   }
 
   /**
-   * Set the held item visual. blockTiles: per-face atlas tiles for a block, or iconTexture for flat items.
+   * Set a hand's held item visual ('main' or 'off'). blockFaces: per-face atlas tiles for a block,
+   * or iconTexture for flat items; key null clears the hand.
    */
-  setHeld(key, { blockFaces, iconTexture } = {}) {
-    if (key === this.handKey) return;
-    this.handKey = key;
-    if (this.handMesh) {
-      this.handGroup.remove(this.handMesh);
-      this.handMesh.geometry.dispose();
-      this.handMesh.material.dispose();
-      this.handMesh = null;
+  setHeld(key, { blockFaces, iconTexture } = {}, hand = 'main') {
+    const st = this.hands[hand];
+    if (key === st.key) return;
+    st.key = key;
+    if (st.mesh) {
+      st.group.remove(st.mesh);
+      st.mesh.geometry.dispose();
+      st.mesh.material.dispose();
+      st.mesh = null;
     }
     if (!key) return;
+    const m = hand === 'off' ? -1 : 1;
+    const k = hand === 'off' ? 0.8 : 1;
     let mesh;
     if (blockFaces) {
-      const g = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+      const g = new THREE.BoxGeometry(0.4 * k, 0.4 * k, 0.4 * k);
       const uv = g.attributes.uv;
       // BoxGeometry face order: +x, -x, +y, -y, +z, -z (4 verts each).
       for (let f = 0; f < 6; f++) {
         const tile = blockFaces[f];
         const col = tile % ATLAS_COLS, row = Math.floor(tile / ATLAS_COLS);
-        for (let k = 0; k < 4; k++) {
-          const i = f * 4 + k;
+        for (let q = 0; q < 4; q++) {
+          const i = f * 4 + q;
           const u = uv.getX(i), v = uv.getY(i);
           uv.setXY(i, (col + 0.001 + u * 0.998) / ATLAS_COLS, (row + 0.999 - v * 0.998) / ATLAS_ROWS);
         }
       }
       mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: this.atlas, alphaTest: 0.5 }));
-      mesh.position.set(0.42, -0.42, -0.75);
-      mesh.rotation.set(0.15, 0.75, 0);
+      mesh.position.set(0.42 * m, -0.42, -0.75);
+      mesh.rotation.set(0.15, 0.75 * m, 0);
     } else {
-      mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), new THREE.MeshBasicMaterial({ map: iconTexture, alphaTest: 0.5, side: THREE.DoubleSide }));
-      mesh.position.set(0.45, -0.36, -0.7);
-      mesh.rotation.set(0.1, -0.5, 0.35);
+      mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.55 * k, 0.55 * k), new THREE.MeshBasicMaterial({ map: iconTexture, alphaTest: 0.5, side: THREE.DoubleSide }));
+      mesh.position.set(0.45 * m, -0.36, -0.7);
+      mesh.rotation.set(0.1, -0.5 * m, 0.35 * m);
     }
-    this.handMesh = mesh;
-    this.handGroup.add(mesh);
+    st.mesh = mesh;
+    st.group.add(mesh);
+  }
+
+  /** Dynamic light carried by the player (a held torch, either hand); level 0 turns it off. */
+  setHeldLight(x, y, z, level) {
+    this.uniforms.uHeld.value.set(x, y, z, level);
   }
 
   triggerSwing() {
@@ -482,7 +494,7 @@ export class Renderer {
   /**
    * timeOfDay in [0,1): 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
    */
-  setEnvironment({ timeOfDay, rain = 0, underwater = false, inLava = false, renderDistance = 5, brightness = 0.5 }) {
+  setEnvironment({ timeOfDay, rain = 0, underwater = false, inLava = false, renderDistance = 5, brightness = 0.5, dimension = 'overworld' }) {
     const angle = timeOfDay * Math.PI * 2;
     const sunH = Math.sin(angle);
     const day = smoothstep(-0.22, 0.28, sunH);
@@ -494,18 +506,26 @@ export class Renderer {
       top.lerp(gray, rain * 0.8);
       horizon.lerp(gray, rain * 0.75);
     }
+    const other = dimension !== 'overworld';
+    if (dimension === 'nether') {
+      top.set(0.2, 0.05, 0.04);
+      horizon.set(0.26, 0.07, 0.05);
+    } else if (dimension === 'end') {
+      top.set(0.05, 0.02, 0.1);
+      horizon.set(0.13, 0.07, 0.2);
+    }
     this.skyUniforms.uTop.value.copy(top);
     this.skyUniforms.uHorizon.value.copy(horizon);
     const sunDir = new THREE.Vector3(Math.cos(angle), sunH, 0.25).normalize();
     this.skyUniforms.uSunDir.value.copy(sunDir);
     this.skyUniforms.uGlow.value.set(0.9, 0.45, 0.2).multiplyScalar(sunset * 0.6);
 
-    const daylight = lerp(0.16, 1, day) * (1 - rain * 0.3);
+    const daylight = other ? (dimension === 'nether' ? 0.5 : 0.42) : lerp(0.16, 1, day) * (1 - rain * 0.3);
     this.uniforms.uDaylight.value = daylight;
-    const skyLight = v3(0.55, 0.62, 0.9).lerp(v3(1, 1, 1), day).lerp(v3(1, 0.86, 0.72), sunset * 0.5);
+    const skyLight = dimension === 'nether' ? v3(1, 0.55, 0.42) : dimension === 'end' ? v3(0.8, 0.7, 1) : v3(0.55, 0.62, 0.9).lerp(v3(1, 1, 1), day).lerp(v3(1, 0.86, 0.72), sunset * 0.5);
     this.uniforms.uSkyLight.value.copy(skyLight);
     this.uniforms.uGamma.value = brightness * 0.9;
-    this.uniforms.uMinLight.value = 0.025 + brightness * 0.07;
+    this.uniforms.uMinLight.value = (dimension === 'nether' ? 0.07 : 0.025) + brightness * 0.07;
 
     const far = renderDistance * CHUNK_SIZE;
     let fogColor = horizon.clone();
@@ -518,6 +538,9 @@ export class Renderer {
       fogColor = v3(0.8, 0.3, 0.05);
       near = 0;
       fogFar = 2.5;
+    } else if (dimension === 'nether') {
+      near = 6;
+      fogFar = Math.min(far, 96) * 0.9;
     } else if (rain > 0) {
       near *= 1 - rain * 0.45;
       fogFar *= 1 - rain * 0.25;
@@ -531,11 +554,13 @@ export class Renderer {
     this.camera.far = far + 48;
     this.camera.updateProjectionMatrix();
 
+    this.sun.visible = this.moon.visible = !other;
+    this.clouds.visible = !other && !!this.quality.clouds;
     this.sun.position.copy(sunDir).multiplyScalar(8);
     this.moon.position.copy(sunDir).multiplyScalar(-8);
     this.sun.lookAt(0, 0, 0);
     this.moon.lookAt(0, 0, 0);
-    this.stars.material.opacity = clamp((1 - day) * 1.4 - rain, 0, 1);
+    this.stars.material.opacity = dimension === 'end' ? 0.95 : dimension === 'nether' ? 0 : clamp((1 - day) * 1.4 - rain, 0, 1);
     this.clouds.material.color.setRGB(lerp(0.18, 1, day), lerp(0.2, 1, day), lerp(0.28, 1, day)).multiplyScalar(1 - rain * 0.35);
     this.dayFactor = day;
     this.daylight = daylight;
@@ -594,19 +619,21 @@ export class Renderer {
     this.gl.render(this.skyScene, this.skyCamera);
     this.gl.clearDepth();
     this.gl.render(this.scene, cam);
-    if (showHand && this.handMesh) {
+    if (showHand && (this.hands.main.mesh || this.hands.off.mesh)) {
       this.bob += dt * walking * 9;
       if (this.swing > 0) this.swing = Math.max(0, this.swing - dt * 4);
       const s = Math.sin((1 - this.swing) * Math.PI);
-      this.handGroup.position.set(Math.sin(this.bob) * 0.02 * walking - s * 0.12, Math.abs(Math.cos(this.bob)) * 0.02 * walking - s * 0.1, -s * 0.15);
-      this.handGroup.rotation.set(-s * 0.7, s * 0.2, 0);
+      const bobX = Math.sin(this.bob) * 0.02 * walking, bobY = Math.abs(Math.cos(this.bob)) * 0.02 * walking;
+      this.hands.main.group.position.set(bobX - s * 0.12, bobY - s * 0.1, -s * 0.15);
+      this.hands.main.group.rotation.set(-s * 0.7, s * 0.2, 0);
+      this.hands.off.group.position.set(-bobX, bobY, 0);
       this.gl.clearDepth();
       this.gl.render(this.handScene, this.handCamera);
     }
   }
 
   setHandBrightness(b) {
-    if (this.handMesh) this.handMesh.material.color.setScalar(b);
+    for (const h of Object.values(this.hands)) if (h.mesh) h.mesh.material.color.setScalar(b);
   }
 
   dispose() {

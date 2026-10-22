@@ -22,6 +22,17 @@ const VOICES = {
   shambler: { f: 85, dur: 0.9, wave: 'sawtooth', lp: 420, glide: -20, vib: 3, noise: 0.4 },
   skitter: { f: 1800, dur: 0.04, wave: 'square', lp: 5000, glide: -600, vib: 0, repeat: 5, noise: 0.3 },
   bonecaster: { f: 1400, dur: 0.03, wave: 'square', lp: 4000, glide: -300, vib: 0, repeat: 6 },
+  hopper: { f: 520, dur: 0.12, wave: 'triangle', lp: 2200, glide: 160, vib: 0, repeat: 2 },
+  bat: { f: 3200, dur: 0.05, wave: 'sine', lp: 6000, glide: 900, vib: 0, repeat: 3 },
+  prowler: { f: 70, dur: 0.8, wave: 'sawtooth', lp: 380, glide: 30, vib: 6, noise: 0.5 },
+  blastling: { f: 210, dur: 0.5, wave: 'sawtooth', lp: 600, glide: 120, vib: 0, noise: 1 },
+  gloop: { f: 190, dur: 0.18, wave: 'sine', lp: 700, glide: 110, vib: 0 },
+  emberling: { f: 600, dur: 0.3, wave: 'square', lp: 1800, glide: -200, vib: 18, noise: 0.5 },
+  cinderhound: { f: 130, dur: 0.4, wave: 'sawtooth', lp: 900, glide: -70, vib: 0, repeat: 2, noise: 0.4 },
+  magmaling: { f: 150, dur: 0.22, wave: 'triangle', lp: 650, glide: 80, vib: 0, noise: 0.5 },
+  wisp: { f: 880, dur: 0.7, wave: 'sine', lp: 2400, glide: 220, vib: 7 },
+  voidstalker: { f: 55, dur: 1.1, wave: 'sawtooth', lp: 500, glide: 260, vib: 14, noise: 0.5 },
+  drake: { f: 62, dur: 1.3, wave: 'sawtooth', lp: 520, glide: -30, vib: 5, noise: 0.8 },
   gloomling: { f: 140, dur: 0.6, wave: 'triangle', lp: 800, glide: 60, vib: 12, noise: 0.6 },
 };
 
@@ -269,6 +280,28 @@ export class AudioManager {
       case 'toolbreak':
         this.tone(dest, t, 1800, 0.25, 0.2, 'square', -1400);
         this.noiseBurst(dest, t, 0.2, 'highpass', 3000, 0.5, 0.3);
+        break;
+      case 'explode':
+        this.noiseBurst(dest, t, 0.7, 'lowpass', 500, 0.7, 0.9);
+        this.tone(dest, t, 90, 0.5, 0.5, 'sawtooth', -60);
+        break;
+      case 'fizz':
+        this.noiseBurst(dest, t, 0.5, 'highpass', 3000, 0.6, 0.22, true);
+        break;
+      case 'arrow':
+        this.noiseBurst(dest, t, 0.2, 'bandpass', 1800, 1.2, 0.22);
+        this.tone(dest, t, 300, 0.1, 0.12, 'triangle', 500);
+        break;
+      case 'portal':
+        [0, 7, 12].forEach((s, k) => this.tone(dest, t + k * 0.12, 220 * 2 ** (s / 12), 0.8, 0.12, 'sine', 40));
+        break;
+      case 'shield':
+        this.noiseBurst(dest, t, 0.08, 'bandpass', 1200, 3, 0.4);
+        this.tone(dest, t, 520, 0.12, 0.2, 'square', -200);
+        break;
+      case 'fireball':
+        this.noiseBurst(dest, t, 0.4, 'bandpass', 900, 0.8, 0.35);
+        this.tone(dest, t, 180, 0.35, 0.2, 'sawtooth', 160);
         break;
       case 'levelup':
         [0, 4, 7, 12].forEach((s, k) => this.tone(dest, t + k * 0.09, 440 * 2 ** (s / 12), 0.2, 0.14, 'triangle'));

@@ -4,6 +4,7 @@ import { ICONS } from './svg.js';
 import { iconURL } from '../rendering/icons.js';
 import { GAME_TITLE, GAME_VERSION, SAVE_VERSION, DIFFICULTY } from '../config/constants.js';
 import { SCHEMA } from '../game/settings.js';
+import { DIM_LABEL } from '../world/dimensions.js';
 
 const icon = (name) => h('span.ico', { html: ICONS[name] });
 
@@ -169,6 +170,7 @@ export function settingsScreen(app, context, tabName = 'graphics') {
         slider('textScale', 'Text size', null, pct),
         seg('crosshair', 'Crosshair', [['plus', 'Plus'], ['dot', 'Dot'], ['circle', 'Circle']]),
         toggle('reducedMotion', 'Reduced motion', 'No view bobbing, camera shake or swaying plants'),
+        toggle('showCoords', 'Show coordinates', 'X Y Z and facing direction on screen (C key)'),
         toggle('showDebug', 'Show debug info', 'FPS, coordinates, biome, chunk stats'),
         h('div.row', h('div.label', 'Tutorial', h('span.hint', 'Show the step-by-step guide again')), h('div.ctl', h('button.btn', { on: { click: () => { app.tutorial.restart(); app.ui.toast('Tutorial will show in your next game'); } } }, 'Restart tutorial'))),
       );
@@ -221,10 +223,12 @@ export function pauseScreen(app, game) {
           h('button.btn.primary.wide', { on: { click: () => app.resume() } }, icon('play'), 'Resume'),
           h('button.btn', { on: { click: () => app.showSettings('pause') } }, icon('gear'), 'Settings'),
           h('button.btn', { on: { click: () => app.saveNow() } }, 'Save now'),
+          h('button.btn.wide', { on: { click: (e) => { const on = !app.settings.get('showCoords'); app.settings.set('showCoords', on); e.currentTarget.textContent = `Coordinates: ${on ? 'on' : 'off'}`; } } }, `Coordinates: ${app.settings.get('showCoords') ? 'on' : 'off'}`),
           h('button.btn.wide', { on: { click: () => app.quitToMenu() } }, 'Save & quit to menu')),
         creativeTools ? h('div', { style: { marginTop: '12px' } }, creativeTools) : null,
         h('div.kv', { style: { marginTop: '12px' } },
           'World', h('b', game.record.name),
+          'Realm', h('b', DIM_LABEL[game.dim]),
           'Mode', h('b', `${game.record.mode} · ${DIFFICULTY[game.record.difficulty].label}`),
           'Seed', h('b', game.record.seed),
           'Position', h('b', `${Math.floor(p.pos.x)}, ${Math.floor(p.pos.y)}, ${Math.floor(p.pos.z)}`),

@@ -40,6 +40,15 @@ export class HUD {
     this.armorBar = h('div.bar');
     this.airBar = h('div.bar.right');
     this.hotbar = h('div.hotbar');
+    this.offSlot = h('div.hslot.off', { title: 'Offhand: tap to swap with the selected slot' });
+    this.offSlot.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.ui.app.game?.swapHands();
+    });
+    this.hotbar.append(this.offSlot, h('div.off-sep'));
+    this.coords = h('div.coords.hidden');
+    this.bossBar = h('div.bossbar.hidden', h('div.name', 'Void Drake'), h('div.track', h('i')));
+    this.portal = h('div.portal-tint');
     this.hslots = [];
     for (let i = 0; i < 9; i++) {
       const s = h('div.hslot', { 'data-slot': i });
@@ -53,7 +62,7 @@ export class HUD {
     this.statsEl = h('div.stats', this.healthBar, this.foodBar);
     this.subEl = h('div.subbar', this.armorBar, this.airBar);
     this.el.append(
-      this.water, this.damage, this.crosshair, this.eatRing, this.toasts, this.pickups, this.debug, this.saving, this.heldName,
+      this.water, this.damage, this.crosshair, this.eatRing, this.toasts, this.pickups, this.debug, this.saving, this.heldName, this.coords, this.bossBar, this.portal,
       h('div.hotbar-wrap', this.subEl, this.statsEl, this.hotbar),
     );
     this.last = {};
@@ -114,9 +123,23 @@ export class HUD {
     }
     this.heldTimer -= dt;
     this.heldName.classList.toggle('show', this.heldTimer > 0);
-    const eating = game.interaction.eating;
+    const eating = game.interaction.eating || (game.interaction.drawing && { t: (game.interaction.drawing.t * 1.2) / 0.9 });
     this.eatRing.classList.toggle('hidden', !eating);
     if (eating) this.eatRing.querySelector('.arc').setAttribute('stroke-dashoffset', String(119.4 * (1 - Math.min(1, eating.t / 1.2))));
+    renderStack(this.offSlot, p.offhand.get(0));
+    this.offSlot.classList.toggle('guard', !!(p.sneaking && p.offhand.get(0) && ITEMS[p.offhand.get(0).id]?.shield));
+    const boss = game.entities.boss;
+    this.bossBar.classList.toggle('hidden', !boss);
+    if (boss) this.bossBar.querySelector('i').style.width = `${Math.max(0, (boss.health / boss.def.health) * 100)}%`;
+    if (this.coordsOn) {
+      this.coordsTimer = ((this.coordsTimer || 0) + 1) % 4;
+      if (this.coordsTimer === 0) {
+        const x = Math.floor(p.pos.x), y = Math.floor(p.pos.y), z = Math.floor(p.pos.z);
+        const dir = ['N', 'E', 'S', 'W'][game.interaction.facingIndex()];
+        const other = game.dim === 'nether' ? `  ·  Overworld ≈ ${x * 8}, ${z * 8}` : '';
+        this.coords.textContent = `X ${x}   Y ${y}   Z ${z}   ${dir}${other}`;
+      }
+    }
     this.water.classList.toggle('on', p.headInWater);
     if (!this.debug.classList.contains('hidden')) this.updateDebug(game);
   }
@@ -150,6 +173,16 @@ export class HUD {
       `Seed ${game.record.seed}  JS heap ${mem}`,
       `Last save ${game.lastSaveOk ? 'ok' : 'FAILED'} ${(game.stats.lastSaveMs ?? 0).toFixed(1)} ms`,
     ].join('\n');
+  }
+
+  toggleCoords(on) {
+    this.coordsOn = !!on;
+    this.coords.classList.toggle('hidden', !on);
+  }
+
+  /** Purple vignette that grows while standing in a portal (0..1). */
+  setPortal(f) {
+    this.portal.style.opacity = String(f * 0.85);
   }
 
   toggleDebug(on) {

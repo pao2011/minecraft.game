@@ -19,6 +19,14 @@ const TABLES = {
     rolls: [3, 5],
     items: [['gold_ingot', 3, 2, 5], ['ember_dust', 2, 2, 6], ['bone', 2, 1, 5], ['spoiled_meat', 2, 1, 4], ['starstone', 1, 1, 1], ['iron_ingot', 2, 1, 3], ['copper_chestplate', 1, 1, 1]],
   },
+  6: { // mineshaft
+    rolls: [3, 5],
+    items: [['coal', 4, 2, 6], ['iron_ingot', 3, 1, 3], ['copper_ingot', 3, 2, 5], ['tidestone', 2, 3, 8], ['bread', 3, 1, 3], ['torch', 3, 4, 10], ['iron_pickaxe', 1, 1, 1], ['string', 2, 1, 4], ['cobweb', 1, 1, 2], ['gold_ingot', 1, 1, 2], ['bowl', 1, 1, 2]],
+  },
+  7: { // cinder keep
+    rolls: [4, 7],
+    items: [['gold_ingot', 3, 2, 6], ['quartz', 3, 3, 9], ['ember_rod', 2, 1, 3], ['golden_apple', 1, 1, 1], ['iron_ingot', 2, 2, 5], ['abyssal_scrap', 1, 1, 2], ['bow', 1, 1, 1], ['arrow', 2, 4, 12], ['shield', 1, 1, 1], ['cinder_brick', 2, 4, 10]],
+  },
   5: { // dungeon
     rolls: [4, 7],
     items: [['iron_ingot', 3, 1, 5], ['gold_ingot', 2, 1, 4], ['starstone', 1, 1, 2], ['bone', 3, 2, 6], ['spoiled_meat', 3, 1, 5], ['bread', 2, 1, 2], ['iron_pickaxe', 1, 1, 1], ['iron_chestplate', 1, 1, 1], ['bone_meal', 2, 2, 6], ['azure_crystal', 2, 1, 3], ['ember_dust', 2, 2, 5]],

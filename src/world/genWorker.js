@@ -1,11 +1,11 @@
 // Web Worker: generates chunk terrain off the main thread and transfers the typed arrays back.
-import { WorldGenerator } from './generator.js';
+import { makeGenerator } from './dimensions.js';
 
 let gen = null;
 self.onmessage = (e) => {
   const m = e.data;
   if (m.type === 'init') {
-    gen = new WorldGenerator(m.seed);
+    gen = makeGenerator(m.dim, m.seed);
   } else if (m.type === 'gen') {
     try {
       const r = gen.generateChunk(m.cx, m.cz);

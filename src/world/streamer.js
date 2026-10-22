@@ -33,7 +33,7 @@ export class ChunkStreamer {
             log.warn('Generation worker failed; falling back to main thread', e.message);
             this.disableWorkers();
           };
-          w.postMessage({ type: 'init', seed: world.seed });
+          w.postMessage({ type: 'init', seed: world.seed, dim: world.dim });
           this.workers.push(w);
         }
       } catch (err) {

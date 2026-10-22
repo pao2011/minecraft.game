@@ -73,7 +73,8 @@ test('world records validate: bad values are repaired, unusable records rejected
 test('v1 saves migrate to the current format', () => {
   const v1 = { id: 'old', seed: 'abc', saveVersion: 1, player: { health: 10 }, inventory: [{ id: 'torch', count: 5 }] };
   const m = migrate(v1);
-  assert.equal(m.saveVersion, 2);
+  assert.equal(m.saveVersion, 3);
+  assert.equal(m.flags.dragonDefeated, false);
   assert.deepEqual(m.player.inventory, [{ id: 'torch', count: 5 }]);
   assert.equal(m.weather.state, 'clear');
   const rec = normalizeWorld(v1);

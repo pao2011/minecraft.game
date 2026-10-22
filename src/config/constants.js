@@ -15,7 +15,7 @@ export const WORLD_BORDER = 16000;
 
 // Bumping GEN_VERSION means seeds produce different terrain; saved chunks are kept as-is.
 export const GEN_VERSION = 1;
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export const PLAYER = {
   width: 0.6,

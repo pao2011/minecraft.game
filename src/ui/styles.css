@@ -309,3 +309,15 @@ details.adv summary { cursor: pointer; padding: 8px 0; color: var(--muted); font
 @media (prefers-reduced-motion: reduce) {
   .screen, .panel, .toast, .pickup, .hint-banner { animation: none; }
 }
+
+/* ---- Second hand, coordinates, boss bar, portal vignette ---- */
+.hslot.off { opacity: 0.95; border-style: dashed; }
+.hslot.off.guard { border-color: #7cc4ff; box-shadow: 0 0 8px rgba(124, 196, 255, 0.7); }
+.off-sep { width: 2px; background: rgba(255, 255, 255, 0.14); margin: 3px 1px; border-radius: 1px; }
+.coords { position: absolute; right: calc(122px * var(--bs) + var(--safe-r)); top: calc(14px + var(--safe-t)); font: 700 0.82rem/1 ui-monospace, Menlo, Consolas, monospace; background: rgba(12, 14, 18, 0.62); padding: 6px 10px; border-radius: 8px; white-space: pre; text-shadow: 0 1px 2px #000; }
+.bossbar { position: absolute; left: 50%; top: calc(46px + var(--safe-t)); transform: translateX(-50%); width: min(420px, 56vw); text-align: center; }
+.bossbar .name { font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.78rem; text-shadow: 0 1px 3px #000; margin-bottom: 3px; color: #e6c8ff; }
+.bossbar .track { height: 10px; border-radius: 5px; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 255, 255, 0.25); overflow: hidden; }
+.bossbar .track i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #8a3fd8, #d070ff); transition: width 0.15s; }
+.portal-tint { position: absolute; inset: 0; background: radial-gradient(circle, rgba(150, 70, 230, 0.15), rgba(90, 20, 170, 0.75)); opacity: 0; }
+.t-swap { }

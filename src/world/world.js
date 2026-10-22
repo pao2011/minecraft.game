@@ -4,21 +4,25 @@ import { CHUNK_SIZE, WORLD_HEIGHT, SECTION_SIZE, SECTIONS_PER_CHUNK, WORLD_BORDE
 import { BLOCKS, B, EMIT, OPACITY, SOLID, OPAQUE } from './blocks.js';
 import { chunkKey, toChunk, posKey } from './coords.js';
 import { LightEngine } from './lighting.js';
-import { WorldGenerator, growTree } from './generator.js';
+import { growTree } from './generator.js';
+import { makeGenerator } from './dimensions.js';
 import { getBoxes } from './shapes.js';
 import { hash4 } from '../util/noise.js';
 
 const NEIGHBORS6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 export class World {
-  constructor(seed) {
+  constructor(seed, dim = 'overworld') {
     this.seed = seed;
-    this.generator = new WorldGenerator(seed);
+    this.dim = dim;
+    this.generator = makeGenerator(dim, seed);
+    this.portalCheck = true; // portals.js pauses this while it fills a frame
     this.chunks = new Map();
     this.light = new LightEngine(this);
     this.dirtySections = new Set(); // section keys needing a mesh rebuild
     this.blockData = new Map(); // posKey -> container/furnace state
     this.spawners = new Set(); // posKeys of creature-spawning totems in loaded chunks
+    this.crystals = new Set(); // posKeys of void crystals (they heal the Void Drake)
     this.unloadedModified = new Map(); // chunkKey -> {cx, cz, blocks, meta} awaiting save
     this.fluidQueue = new Map(); // posKey -> due time
     this.time = 0; // simulation clock in seconds (for fluid scheduling)
@@ -54,9 +58,10 @@ export class World {
     this.light.invalidateCache();
     this.light.initChunk(chunk);
     for (let i = 0; i < chunk.blocks.length; i++) {
-      if (chunk.blocks[i] !== B.totem) continue;
+      const b = chunk.blocks[i];
+      if (b !== B.totem && b !== B.void_crystal) continue;
       const lx = i % CHUNK_SIZE, lz = Math.floor(i / CHUNK_SIZE) % CHUNK_SIZE, y = Math.floor(i / (CHUNK_SIZE * CHUNK_SIZE));
-      this.spawners.add(posKey(chunk.cx * CHUNK_SIZE + lx, y, chunk.cz * CHUNK_SIZE + lz));
+      (b === B.totem ? this.spawners : this.crystals).add(posKey(chunk.cx * CHUNK_SIZE + lx, y, chunk.cz * CHUNK_SIZE + lz));
     }
     for (let s = 0; s < SECTIONS_PER_CHUNK; s++) this.markSection(chunk.cx, s, chunk.cz);
     // Neighbors' border faces depend on this chunk.
@@ -73,9 +78,11 @@ export class World {
     if (c.modified && c.dirtySave) this.unloadedModified.set(key, { cx, cz, blocks: c.blocks, meta: c.meta });
     this.chunks.delete(key);
     this.light.invalidateCache();
-    for (const k of this.spawners) {
-      const [x, , z] = k.split(',').map(Number);
-      if (toChunk(x) === cx && toChunk(z) === cz) this.spawners.delete(k);
+    for (const set of [this.spawners, this.crystals]) {
+      for (const k of set) {
+        const [x, , z] = k.split(',').map(Number);
+        if (toChunk(x) === cx && toChunk(z) === cz) set.delete(k);
+      }
     }
     return c;
   }
@@ -167,6 +174,8 @@ export class World {
     if (oldId !== id && BLOCKS[oldId].interact && !BLOCKS[id].interact) this.blockData.delete(posKey(x, y, z));
     if (oldId === B.totem) this.spawners.delete(posKey(x, y, z));
     if (id === B.totem) this.spawners.add(posKey(x, y, z));
+    if (oldId === B.void_crystal) this.crystals.delete(posKey(x, y, z));
+    if (id === B.void_crystal) this.crystals.add(posKey(x, y, z));
     if (!silent) this.emit('blockChanged', x, y, z, oldId, id);
     this.scheduleFluid(x, y, z);
     for (const [dx, dy, dz] of NEIGHBORS6) this.neighborChanged(x + dx, y + dy, z + dz, x, y, z);
@@ -200,6 +209,13 @@ export class World {
     const d = BLOCKS[id];
     if (d.fluid) {
       this.scheduleFluid(x, y, z);
+      return;
+    }
+    if (id === B.nether_portal && this.portalCheck) {
+      // A portal pane needs obsidian or more portal on all four in-plane sides.
+      const [dx, dz] = this.getMeta(x, y, z) & 1 ? [0, 1] : [1, 0];
+      const ok = (px, py, pz) => { const b = this.getBlock(px, py, pz); return b === B.obsidian || b === B.nether_portal; };
+      if (!ok(x, y + 1, z) || !ok(x, y - 1, z) || !ok(x + dx, y, z + dz) || !ok(x - dx, y, z - dz)) this.setBlock(x, y, z, B.air);
       return;
     }
     if (d.needsSupport && !this.isSupported(x, y, z, id)) this.breakBlock(x, y, z, 'support');
@@ -269,7 +285,7 @@ export class World {
     // Lava meeting water hardens.
     for (const [dx, dy, dz] of NEIGHBORS6) {
       if (this.getBlock(x + dx, y + dy, z + dz) === other) {
-        if (isLava) this.setBlock(x, y, z, level === 0 ? B.stone : B.cobblestone);
+        if (isLava) this.setBlock(x, y, z, level === 0 ? B.obsidian : B.cobblestone);
         else if (dy !== -1 || true) this.setBlock(x + dx, y + dy, z + dz, (this.getMeta(x + dx, y + dy, z + dz) & 7) === 0 ? B.stone : B.cobblestone);
         return;
       }
@@ -399,6 +415,33 @@ export class World {
       this.setBlock(wx, wy, wz, id, m);
     }
     return true;
+  }
+
+  /**
+   * Blow up blocks in a sphere. Tough blocks (hardness < 0 or >= 20, e.g. bedrock, obsidian) survive;
+   * the rest break with a probability that falls off toward the rim. Returns the broken count.
+   */
+  explode(cx, cy, cz, radius, rng = Math.random) {
+    let n = 0;
+    const r = Math.ceil(radius);
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dz = -r; dz <= r; dz++) {
+          const dist = Math.hypot(dx, dy, dz);
+          if (dist > radius) continue;
+          const x = Math.floor(cx) + dx, y = Math.floor(cy) + dy, z = Math.floor(cz) + dz;
+          const id = this.getBlock(x, y, z);
+          if (!id || BLOCKS[id].fluid) continue;
+          const h = BLOCKS[id].hardness;
+          if (h < 0 || h >= 20 || !this.canModify(x, y, z)) continue;
+          if (rng() < 1.15 - dist / radius) {
+            this.breakBlock(x, y, z, 'explosion');
+            n++;
+          }
+        }
+      }
+    }
+    return n;
   }
 
   /** Copy a section plus a 1-block border into the mesher's padded arrays. */

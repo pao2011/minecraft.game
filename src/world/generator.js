@@ -5,7 +5,7 @@ import { SimplexNoise, hashSeed, hash4, hashFloat, makeRng, clamp, lerp, smooths
 import { B } from './blocks.js';
 import { BIOMES, BIOME } from './biomes.js';
 import { localIndex } from './coords.js';
-import { structuresIn, surfaceStructureAt, buildStructure } from './structures.js';
+import { structuresIn, surfaceStructureAt, buildStructure, OVERWORLD_STRUCTURES } from './structures.js';
 
 const CAVE_STEP = 4;
 const CAVE_GRID_Y = WORLD_HEIGHT / CAVE_STEP + 1;
@@ -14,6 +14,8 @@ const TREE_CELL = 5;
 export class WorldGenerator {
   constructor(seed) {
     this.seed = hashSeed(seed);
+    this.dimension = 'overworld';
+    this.structureFns = OVERWORLD_STRUCTURES;
     const n = (k) => new SimplexNoise(hash4(this.seed, k, 7919));
     this.nCont = n(1);
     this.nMount = n(2);
@@ -283,6 +285,8 @@ export class WorldGenerator {
       [B.ember_ore, 3.5, 3, 7, 3, 20],
       [B.crystal_ore, 0.6, 2, 5, 3, 36],
       [B.starstone_ore, 0.45, 1, 4, 3, 16],
+      [B.tidestone_ore, 3.5, 4, 8, 4, 32],
+      [B.verdant_ore, mountain ? 2.5 : 0, 1, 3, 30, 100],
       [B.dirt, 4, 10, 24, 10, 90],
       [B.gravel, 4, 10, 24, 5, 90],
     ];
@@ -368,7 +372,7 @@ export class WorldGenerator {
   }
 }
 
-function makeCtx(blocks, meta, x0, z0) {
+export function makeCtx(blocks, meta, x0, z0) {
   return {
     set(x, y, z, id, m = 0) {
       const lx = x - x0, lz = z - z0;

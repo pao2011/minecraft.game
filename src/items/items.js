@@ -12,6 +12,8 @@ export const TIERS = {
   iron: { name: 'Iron', level: 3, speed: 6, durability: 250, damage: 6, color: [222, 222, 228] },
   gold: { name: 'Golden', level: 1, speed: 12, durability: 40, damage: 4, color: [250, 214, 60] },
   starstone: { name: 'Starstone', level: 4, speed: 8, durability: 1561, damage: 7, color: [196, 170, 255] },
+  crystal: { name: 'Azure', level: 4, speed: 8, durability: 780, damage: 6.5, color: [90, 200, 250] },
+  abyssal: { name: 'Abyssal', level: 5, speed: 9, durability: 2031, damage: 8, color: [104, 76, 70] },
 };
 
 const TOOL_TYPES = {
@@ -27,6 +29,9 @@ export const ARMOR_SETS = {
   copper: { name: 'Copper', points: [2, 4, 3, 1], durability: 10, material: 'copper_ingot', color: [214, 124, 74] },
   iron: { name: 'Iron', points: [2, 6, 5, 2], durability: 15, material: 'iron_ingot', color: [222, 222, 228] },
   starstone: { name: 'Starstone', points: [3, 8, 6, 3], durability: 33, material: 'starstone', color: [196, 170, 255] },
+  gold: { name: 'Golden', points: [2, 5, 3, 1], durability: 7, material: 'gold_ingot', color: [250, 214, 60] },
+  crystal: { name: 'Azure', points: [3, 8, 6, 3], durability: 30, material: 'azure_crystal', color: [90, 200, 250] },
+  abyssal: { name: 'Abyssal', points: [4, 9, 7, 4], durability: 42, material: 'abyssal_ingot', color: [104, 76, 70] },
 };
 export const ARMOR_SLOTS = ['helmet', 'chestplate', 'leggings', 'boots'];
 const ARMOR_NAMES = { helmet: 'Cap', chestplate: 'Vest', leggings: 'Greaves', boots: 'Boots' };
@@ -39,7 +44,7 @@ function reg(key, props) {
 
 // Every placeable block is also an item with the same key.
 for (const d of BLOCKS) {
-  if (!d || d.id === 0 || d.fluid || d.crop) continue;
+  if (!d || d.id === 0 || d.fluid || d.crop || d.creative === false) continue;
   reg(d.key, { name: d.name, kind: 'block', block: d.id, category: d.category });
 }
 
@@ -68,6 +73,33 @@ mat('wheat', 'Wheat');
 reg('wheat_seeds', { name: 'Wheat Seeds', kind: 'seed', plants: B.wheat });
 reg('bucket', { name: 'Bucket', kind: 'tool', stack: 16, use: 'bucket' });
 reg('water_bucket', { name: 'Water Bucket', kind: 'tool', stack: 1, use: 'water_bucket' });
+reg('lava_bucket', { name: 'Lava Bucket', kind: 'tool', stack: 1, use: 'lava_bucket' });
+
+// Minerals and drops from the new realms.
+mat('tidestone', 'Tidestone');
+mat('verdant_gem', 'Verdant Gem');
+mat('quartz', 'Pale Quartz');
+mat('abyssal_scrap', 'Abyssal Scrap');
+mat('abyssal_ingot', 'Abyssal Ingot');
+mat('ember_rod', 'Ember Rod', { fuel: 120 });
+mat('ember_powder', 'Ember Powder');
+mat('void_pearl', 'Void Pearl');
+mat('void_eye', 'Void Eye', { use: 'void_eye' });
+mat('drake_heart', 'Drake Heart');
+mat('blast_powder', 'Blast Powder');
+mat('cinder_brick', 'Cinder Brick');
+mat('wisp_tear', 'Wisp Tear');
+mat('hare_pelt', 'Hare Pelt');
+mat('arrow', 'Arrow');
+mat('bowl', 'Wooden Bowl', { fuel: 5 });
+const gear = (key, name, type, durability, extra = {}) => reg(key, { name, kind: 'tool', stack: 1, tool: { type, level: 0, speed: 1, durability, damage: 1 }, ...extra });
+gear('flint_and_steel', 'Flint & Steel', 'igniter', 65, { use: 'ignite' });
+gear('shears', 'Shears', 'shears', 238);
+gear('fishing_rod', 'Angler Rod', 'rod', 64, { use: 'fish', fuel: 10 });
+gear('bow', 'Hunting Bow', 'bow', 384, { use: 'bow', fuel: 10 });
+gear('shield', 'Round Shield', 'shield', 336, { shield: true, fuel: 10 });
+reg('compass', { name: 'Compass', kind: 'tool', stack: 1, use: 'compass' });
+reg('clock', { name: 'Sun Clock', kind: 'tool', stack: 1, use: 'clock' });
 
 const food = (key, name, hunger, saturation, extra = {}) => reg(key, { name, kind: 'food', food: { hunger, saturation }, ...extra });
 food('apple', 'Apple', 4, 2.4);
@@ -82,6 +114,15 @@ food('roast_fowl', 'Roast Fowl', 6, 7.2);
 food('raw_mutton', 'Raw Mutton', 2, 1.2);
 food('cooked_mutton', 'Cooked Mutton', 6, 9.6);
 food('spoiled_meat', 'Spoiled Meat', 3, 0.6);
+food('potato', 'Potato', 1, 0.6, { plants: B.potatoes });
+food('baked_potato', 'Baked Potato', 5, 6);
+food('raw_fish', 'Raw Fish', 2, 0.4);
+food('cooked_fish', 'Smoked Fish', 6, 9.6);
+food('raw_hare', 'Raw Hare', 2, 1.2);
+food('cooked_hare', 'Roast Hare', 5, 6);
+food('golden_apple', 'Golden Apple', 4, 9.6, { food: { hunger: 4, saturation: 9.6, heal: 8 } });
+food('golden_carrot', 'Golden Carrot', 6, 14.4);
+food('glowcap_stew', 'Glowcap Stew', 6, 7.2, { stack: 1, returns: 'bowl' });
 
 for (const [tierKey, tier] of Object.entries(TIERS)) {
   for (const [type, t] of Object.entries(TOOL_TYPES)) {
@@ -110,6 +151,7 @@ for (const [setKey, set] of Object.entries(ARMOR_SETS)) {
 for (const k of ['oak_log', 'pine_log', 'birch_log', 'dark_log']) ITEMS[k].fuel = 15;
 for (const k of ['oak_planks', 'pine_planks', 'birch_planks', 'dark_planks', 'workbench', 'chest', 'fence', 'plank_slab', 'plank_stairs', 'ladder', 'bookshelf']) ITEMS[k].fuel = 15;
 for (const k of ['oak_sapling', 'pine_sapling', 'birch_sapling', 'dark_sapling']) ITEMS[k].fuel = 5;
+ITEMS.coal_block.fuel = 800;
 
 export const getItem = (key) => ITEMS[key] || null;
 export const isValidItem = (key) => typeof key === 'string' && key in ITEMS;
@@ -127,6 +169,7 @@ export function breakTime(blockId, heldKey, { creative = false, inWater = false,
   const canHarvest = d.toolLevel === 0 || (matching && tool.level >= d.toolLevel);
   let speed = matching ? tool.speed : 1;
   if (tool?.type === 'sword' && (d.leaves || d.key === 'cactus')) speed = 1.5;
+  if ((tool?.type === 'sword' && d.key === 'cobweb') || (tool?.type === 'shears' && (d.leaves || d.key === 'cobweb' || d.key === 'wool'))) speed = 15;
   let t = (d.hardness * (canHarvest ? 1.5 : 5)) / speed;
   if (inWater) t *= 5;
   if (!onGround) t *= 5;
@@ -153,8 +196,9 @@ export function blockDrops(blockId, meta, heldKey, rng = Math.random) {
     out.push({ id: d.crop.seed, count: ripe && d.crop.seed !== 'carrot' ? 1 + Math.floor(rng() * 3) : 1 });
     return out;
   }
-  // Leaves cut with a hoe (shears stand-in) drop themselves.
-  if (d.leaves && ITEMS[heldKey]?.tool?.type === 'hoe') return [{ id: d.key, count: 1 }];
+  // Shears (and hoes on leaves) harvest foliage, cobwebs and wool as blocks.
+  const ht = ITEMS[heldKey]?.tool?.type;
+  if ((ht === 'shears' && (d.leaves || d.key === 'cobweb' || d.key === 'wool')) || (ht === 'hoe' && d.leaves)) return [{ id: d.key, count: 1 }];
   if (!d.drops) return ITEMS[d.key] ? [{ id: d.key, count: 1 }] : [];
   const out = [];
   for (const drop of d.drops) {

@@ -52,7 +52,7 @@ export function raycast(world, origin, dir, maxDist, accept) {
     const id = world.getBlock(x, y, z);
     if (id) {
       const d = BLOCKS[id];
-      const ok = accept ? accept(id, d) : !d.fluid;
+      const ok = accept ? accept(id, d) : !d.fluid && d.shape !== 'portal';
       if (ok) {
         const meta = world.getMeta(x, y, z);
         const nb = (ax, ay, az) => world.getBlock(x + ax, y + ay, z + az);

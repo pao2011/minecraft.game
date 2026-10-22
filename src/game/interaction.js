@@ -7,6 +7,8 @@ import { PLAYER, SURVIVAL } from '../config/constants.js';
 import { entityBox } from '../entities/physics.js';
 import { posKey } from '../world/coords.js';
 import { TILE } from '../world/tiles.js';
+import * as THREE from 'three';
+import { lightPortal, tryOpenGate, nearestSanctum } from './portals.js';
 
 const ATTACK_COOLDOWN = 0.45;
 const PLACE_REPEAT = 0.28;
@@ -24,6 +26,25 @@ export class Interaction {
     this.breakDelay = 0;
     this.eating = null;
     this.hitSoundTimer = 0;
+    this.drawing = null; // bow draw: {t, slot}
+    this.bobber = null; // fishing line: {x, y, z, t, bite, window, mesh}
+    this.slot = null; // {inv, idx} of the item currently used by Use (main hand, else offhand)
+  }
+
+  /** The stack Use acts on: the main-hand item, or the offhand item when the main hand is empty. */
+  useSlot() {
+    const p = this.player;
+    const main = p.inventory.get(p.selected);
+    if (main || !p.offhand.get(0)) return { inv: p.inventory, idx: p.selected, stack: main };
+    return { inv: p.offhand, idx: 0, stack: p.offhand.get(0) };
+  }
+
+  /** Stop anything in progress (hand swap, menus, travel). */
+  cancelActions() {
+    this.eating = null;
+    this.drawing = null;
+    this.resetMining();
+    this.cancelFishing();
   }
 
   get player() {
@@ -72,20 +93,27 @@ export class Interaction {
 
     // Eating takes precedence while Use is held with food.
     if (this.eating) {
-      const held = p.heldStack;
+      const { inv, idx } = this.eating.slot;
+      const held = inv.get(idx);
       if (!input.use || !held || held.id !== this.eating.id) this.eating = null;
       else {
         this.eating.t += dt;
         if (Math.floor(this.eating.t * 4) !== Math.floor((this.eating.t - dt) * 4)) this.game.audio.play('eat');
         if (this.eating.t >= EAT_TIME) {
           this.game.survival.eat(held.id);
-          if (!this.creative) p.inventory.consume(p.selected);
+          if (!this.creative) {
+            inv.consume(idx);
+            const back = ITEMS[held.id].returns;
+            if (back && p.inventory.add({ id: back, count: 1 }) > 0) this.game.entities.spawnItem({ id: back, count: 1 }, { ...p.eye });
+          }
           this.game.onAte(held.id);
           this.eating = null;
           this.useTimer = 0.4;
         }
       }
     }
+    this.updateBow(dt, input);
+    this.updateFishing(dt);
 
     if (input.edges.has('minePressed') || input.mine) this.handleMine(dt, input);
     else this.resetMining();
@@ -160,15 +188,16 @@ export class Interaction {
   }
 
   /** Spend tool durability on the selected slot; breaks the tool at zero. */
-  useTool(amount) {
+  useTool(amount, slot = null) {
     const p = this.player;
-    const s = p.heldStack;
+    const { inv, idx } = slot || { inv: p.inventory, idx: p.selected };
+    const s = inv.get(idx);
     if (!s || !maxDurability(s.id)) return;
     s.damage = (s.damage || 0) + amount;
     if (s.damage >= maxDurability(s.id)) {
-      p.inventory.set(p.selected, null);
+      inv.set(idx, null);
       this.game.onItemBroken(s.id);
-    } else p.inventory.set(p.selected, s);
+    } else inv.set(idx, s);
   }
 
   attack(mob) {
@@ -191,7 +220,9 @@ export class Interaction {
   handleUse(fresh) {
     const p = this.player;
     const t = this.target;
-    const held = p.heldStack;
+    const us = this.useSlot();
+    this.slot = us;
+    const held = us.stack;
     const item = held ? ITEMS[held.id] : null;
     if (t?.kind === 'block' && !p.sneaking && fresh) {
       const d = BLOCKS[t.hit.id];
@@ -200,12 +231,34 @@ export class Interaction {
     if (!item) return;
     if (item.food && !(item.plants && t?.kind === 'block' && t.hit.id === B.farmland)) {
       if (!fresh) return;
-      if (this.game.survival.canEat(held.id)) this.eating = { id: held.id, t: 0 };
+      if (this.game.survival.canEat(held.id)) this.eating = { id: held.id, t: 0, slot: us };
       else this.game.toast("You're not hungry right now", 'deny');
       return;
     }
-    if (item.use === 'bucket' || item.use === 'water_bucket') {
+    if (item.use === 'bucket' || item.use === 'water_bucket' || item.use === 'lava_bucket') {
       if (fresh) this.useBucket(item.use);
+      return;
+    }
+    if (item.use === 'bow') {
+      if (!fresh || this.drawing) return;
+      if (!this.creative && p.inventory.count('arrow') === 0) return this.game.toast('You need arrows', 'deny');
+      this.drawing = { t: 0, slot: us };
+      return;
+    }
+    if (item.use === 'fish') {
+      if (fresh) this.useRod();
+      return;
+    }
+    if (item.use === 'compass' || item.use === 'clock') {
+      if (fresh) this.useGauge(item.use);
+      return;
+    }
+    if (item.use === 'void_eye') {
+      if (fresh) this.useVoidEye(t);
+      return;
+    }
+    if (item.use === 'ignite') {
+      if (fresh && t?.kind === 'block') this.useFlint(t.hit);
       return;
     }
     if (t?.kind !== 'block') return;
@@ -214,18 +267,173 @@ export class Interaction {
       if (this.game.world.getBlock(hit.x, hit.y + 1, hit.z) !== B.air) return;
       this.game.world.setBlock(hit.x, hit.y, hit.z, hit.id === B.coarse_dirt ? B.dirt : B.farmland);
       this.game.audio.play('place_gravel');
-      if (!this.creative) this.useTool(1);
+      if (!this.creative) this.useTool(1, us);
       this.game.onTilled();
       return;
     }
     if (item.use === 'fertilize') {
       if (fresh && this.fertilize(hit)) {
-        if (!this.creative) p.inventory.consume(p.selected);
+        if (!this.creative) us.inv.consume(us.idx);
       }
       return;
     }
     const blockId = placedBlock(held.id);
     if (blockId !== null) this.placeBlock(hit, blockId, held, fresh);
+  }
+
+  // ---- Bow ------------------------------------------------------------------------------------
+
+  updateBow(dt, input) {
+    const d = this.drawing;
+    if (!d) return;
+    const held = d.slot.inv.get(d.slot.idx);
+    if (!held || held.id !== 'bow') {
+      this.drawing = null;
+      return;
+    }
+    d.t += dt;
+    if (input.use) return;
+    this.drawing = null;
+    if (d.t < 0.25) return;
+    const p = this.player;
+    if (!this.creative) {
+      if (p.inventory.remove('arrow', 1) === 0) return;
+      this.useTool(1, d.slot);
+    }
+    const pull = Math.min(1, d.t / 0.9);
+    const dir = p.lookDir();
+    const eye = p.eye;
+    this.game.entities.shootArrow({ x: eye.x + dir.x * 0.5, y: eye.y - 0.1, z: eye.z + dir.z * 0.5 }, dir, 12 + 30 * pull, 2 + 7 * pull);
+    this.game.renderer.triggerSwing();
+  }
+
+  // ---- Fishing --------------------------------------------------------------------------------
+
+  useRod() {
+    const p = this.player;
+    const w = this.game.world;
+    if (this.bobber) {
+      if (this.bobber.bite) this.catchFish();
+      else this.cancelFishing();
+      return;
+    }
+    const hit = raycast(w, p.eye, p.lookDir(), 12, (id) => id === B.water);
+    if (!hit) return this.game.toast('Cast the line onto water', 'deny');
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({ color: 0xd8342c }));
+    this.game.entities.group.add(mesh);
+    this.bobber = { x: hit.x + 0.5, y: hit.y + 0.85, z: hit.z + 0.5, t: 3 + Math.random() * 8, bite: false, window: 0, mesh };
+    this.game.audio.play('splash', { volume: 0.5 });
+  }
+
+  cancelFishing() {
+    if (!this.bobber) return;
+    this.game.entities.group.remove(this.bobber.mesh);
+    this.bobber.mesh.geometry.dispose();
+    this.bobber.mesh.material.dispose();
+    this.bobber = null;
+  }
+
+  updateFishing(dt) {
+    const b = this.bobber;
+    if (!b) return;
+    const p = this.player;
+    const held = p.heldStack?.id === 'fishing_rod' || p.offhand.get(0)?.id === 'fishing_rod';
+    if (!held || Math.hypot(b.x - p.pos.x, b.z - p.pos.z) > 16) return this.cancelFishing();
+    if (b.bite) {
+      b.window -= dt;
+      if (b.window <= 0) {
+        b.bite = false;
+        b.t = 3 + Math.random() * 6;
+      }
+    } else {
+      b.t -= dt;
+      if (b.t <= 0) {
+        b.bite = true;
+        b.window = 1.2;
+        this.game.audio.play('splash');
+        this.game.renderer.spawnBlockParticles(Math.floor(b.x), Math.floor(b.y - 1), Math.floor(b.z), TILE.water, 1, 8);
+        this.game.toast('Something bites! Tap Use to reel in');
+      }
+    }
+    b.mesh.position.set(b.x, b.y + Math.sin(performance.now() / 300) * 0.04 - (b.bite ? 0.25 : 0), b.z);
+  }
+
+  catchFish() {
+    const p = this.player;
+    const r = Math.random();
+    const id = r < 0.84 ? 'raw_fish' : r < 0.91 ? 'bone' : r < 0.96 ? 'string' : r < 0.99 ? 'gold_ingot' : 'azure_crystal';
+    const left = p.inventory.add({ id, count: 1 });
+    if (left) this.game.entities.spawnItem({ id, count: 1 }, { ...p.eye });
+    this.game.audio.play('pickup');
+    this.game.renderer.triggerSwing();
+    this.game.toast(`Caught: ${ITEMS[id].name}`);
+    this.cancelFishing();
+    if (!this.creative) this.useTool(1, this.rodSlot());
+  }
+
+  rodSlot() {
+    const p = this.player;
+    return p.heldStack?.id === 'fishing_rod' ? { inv: p.inventory, idx: p.selected } : { inv: p.offhand, idx: 0 };
+  }
+
+  // ---- Small tools ------------------------------------------------------------------------------
+
+  useGauge(kind) {
+    const g = this.game;
+    if (g.dim !== 'overworld') return g.toast(kind === 'compass' ? 'The needle spins wildly' : 'The clock has stopped');
+    if (kind === 'clock') {
+      const t = g.record.time;
+      const hours = Math.floor((t.tod * 24 + 6) % 24), mins = Math.floor((((t.tod * 24 + 6) % 1) * 60) / 10) * 10;
+      return g.toast(`Day ${t.day + 1} · ${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`);
+    }
+    const sp = g.record.worldSpawn, p = this.player;
+    const dx = sp.x - p.pos.x, dz = sp.z - p.pos.z;
+    const dist = Math.round(Math.hypot(dx, dz));
+    const names = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+    const bearing = Math.round(Math.atan2(dx, -dz) / (Math.PI / 4));
+    g.toast(dist < 4 ? 'You are at the world spawn' : `World spawn: ${dist} blocks ${names[((bearing % 8) + 8) % 8]}`);
+  }
+
+  useVoidEye(t) {
+    const g = this.game;
+    const w = g.world;
+    if (t?.kind === 'block' && t.hit.id === B.end_frame) {
+      const { x, y, z } = t.hit;
+      const meta = w.getMeta(x, y, z);
+      if (meta & 4) return;
+      w.setBlock(x, y, z, B.end_frame, meta | 4);
+      if (!this.creative) this.slot.inv.consume(this.slot.idx);
+      g.audio.play('portal');
+      if (tryOpenGate(w, x, y, z)) g.toast('The Void Gate hums open!');
+      return;
+    }
+    if (g.dim !== 'overworld') return g.toast('The eye is dull here');
+    const p = this.player;
+    const found = nearestSanctum(w.generator, p.pos.x, p.pos.z);
+    if (!found) return g.toast('The eye sees nothing nearby');
+    const names = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+    const bearing = Math.round(Math.atan2(found.x - p.pos.x, -(found.z - p.pos.z)) / (Math.PI / 4));
+    g.toast(`The eye gazes ${names[((bearing % 8) + 8) % 8]} (about ${Math.round(found.dist)} blocks) and sinks deep below`);
+  }
+
+  useFlint(hit) {
+    const g = this.game;
+    const w = g.world;
+    let used = false;
+    if (hit.id === B.blast_charge) {
+      g.ignite(hit.x, hit.y, hit.z);
+      used = true;
+    } else {
+      for (const [dx, dy, dz] of [[hit.normal[0], hit.normal[1], hit.normal[2]], [0, 1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, -1, 0]]) {
+        if (hit.id === B.obsidian && lightPortal(w, hit.x + dx, hit.y + dy, hit.z + dz)) {
+          used = true;
+          g.audio.play('portal');
+          break;
+        }
+      }
+    }
+    if (used && !this.creative) this.useTool(1, this.slot);
+    if (!used) g.audio.play('click', { volume: 0.4 });
   }
 
   interactBlock(hit, d) {
@@ -265,34 +473,43 @@ export class Interaction {
   useBucket(kind) {
     const p = this.player;
     const w = this.game.world;
-    const hit = raycast(w, p.eye, p.lookDir(), PLAYER.reach, (id, d) => (kind === 'bucket' ? id === B.water : !!d.id && !d.fluid));
+    const hit = raycast(w, p.eye, p.lookDir(), PLAYER.reach, (id, d) => (kind === 'bucket' ? id === B.water || id === B.lava : !!d.id && !d.fluid));
     if (!hit) return;
     if (kind === 'bucket') {
-      if (hit.id !== B.water || (hit.meta & 7) !== 0) return;
+      if ((hit.id !== B.water && hit.id !== B.lava) || (hit.meta & 7) !== 0) return;
       w.setBlock(hit.x, hit.y, hit.z, B.air);
-      this.swapHeld('water_bucket');
+      this.swapHeld(hit.id === B.lava ? 'lava_bucket' : 'water_bucket');
       this.game.audio.play('splash');
-    } else {
-      const replace = BLOCKS[hit.id].replaceable ? hit : null;
-      const c = replace ? { x: hit.x, y: hit.y, z: hit.z } : hit.place;
-      const cur = w.getBlock(c.x, c.y, c.z);
-      if (!w.canModify(c.x, c.y, c.z) || (cur !== B.air && !BLOCKS[cur].replaceable)) return;
-      if (cur !== B.air && cur !== B.water) w.breakBlock(c.x, c.y, c.z, 'fluid');
-      w.setBlock(c.x, c.y, c.z, B.water, 0);
-      this.swapHeld('bucket');
-      this.game.audio.play('splash');
+      return;
     }
+    const fluid = kind === 'lava_bucket' ? B.lava : B.water;
+    if (fluid === B.water && this.game.dim === 'nether') {
+      // The heat flashes water away.
+      this.swapHeld('bucket');
+      this.game.audio.play('fizz');
+      this.game.toast('The water evaporates in the heat', 'warn');
+      return;
+    }
+    const replace = BLOCKS[hit.id].replaceable ? hit : null;
+    const c = replace ? { x: hit.x, y: hit.y, z: hit.z } : hit.place;
+    const cur = w.getBlock(c.x, c.y, c.z);
+    if (!w.canModify(c.x, c.y, c.z) || (cur !== B.air && !BLOCKS[cur].replaceable)) return;
+    if (cur !== B.air && cur !== B.water && cur !== B.lava) w.breakBlock(c.x, c.y, c.z, 'fluid');
+    w.setBlock(c.x, c.y, c.z, fluid, 0);
+    this.swapHeld('bucket');
+    this.game.audio.play('splash');
   }
 
   swapHeld(id) {
-    const p = this.player;
     if (this.creative) return;
-    const s = p.heldStack;
+    const p = this.player;
+    const { inv, idx } = this.slot || { inv: p.inventory, idx: p.selected };
+    const s = inv.get(idx);
     if (s.count > 1) {
-      p.inventory.consume(p.selected);
+      inv.consume(idx);
       const left = p.inventory.add({ id, count: 1 });
       if (left) this.game.entities.spawnItem({ id, count: 1 }, { ...p.eye });
-    } else p.inventory.set(p.selected, { id, count: 1 });
+    } else inv.set(idx, { id, count: 1 });
   }
 
   fertilize(hit) {
@@ -397,7 +614,7 @@ export class Interaction {
       w.setBlock(x, y, z, blockId, m);
     }
     if (blockId === B.chest || blockId === B.furnace) this.game.world.blockData.delete(posKey(c.x, c.y, c.z));
-    if (!this.creative) p.inventory.consume(p.selected);
+    if (!this.creative) this.slot.inv.consume(this.slot.idx);
     this.game.renderer.triggerSwing();
     this.game.audio.play(`place_${d.sound}`, { pos: { x: c.x + 0.5, y: c.y + 0.5, z: c.z + 0.5 } });
     this.game.onBlockPlaced(blockId);

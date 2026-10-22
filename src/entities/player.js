@@ -24,6 +24,7 @@ export class Player {
     this.onLadder = false;
     this.inventory = new Inventory(36); // 0-8 hotbar, 9-35 backpack
     this.armor = new Inventory(4);
+    this.offhand = new Inventory(1); // second hand: shield, torch, food...
     this.selected = 0;
     this.health = PLAYER.maxHealth;
     this.hunger = PLAYER.maxHunger;
@@ -90,6 +91,13 @@ export class Player {
     this.vel.x += (tx - this.vel.x) * k;
     this.vel.z += (tz - this.vel.z) * k;
 
+    if (this.inWeb && !this.flying) {
+      // Cobwebs cling: movement and falling are heavily damped.
+      const web = Math.exp(-16 * dt);
+      this.vel.x *= web;
+      this.vel.z *= web;
+      if (this.vel.y < 0) this.vel.y *= web;
+    }
     if (this.flying) {
       const vy = ((input.jump ? 1 : 0) - (input.flyDown || input.sneak ? 1 : 0)) * speed * 0.75;
       this.vel.y += (vy - this.vel.y) * (1 - Math.exp(-8 * dt));
@@ -154,6 +162,7 @@ export class Player {
     this.inWater = touching.some((t) => t.id === B.water);
     this.inLava = touching.some((t) => t.id === B.lava);
     this.onLadder = touching.some((t) => t.def.climbable);
+    this.inWeb = touching.some((t) => t.id === B.cobweb);
     const eye = this.eye;
     const headId = world.getBlock(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
     this.headInWater = headId === B.water && eye.y - Math.floor(eye.y) < 0.9;

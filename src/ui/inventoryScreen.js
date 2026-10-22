@@ -170,23 +170,29 @@ export class InventoryScreen {
         // Hotbar <-> backpack.
         const order = i < 9 ? [...Array(27).keys()].map((k) => k + 9) : [...Array(9).keys()];
         const it = ITEMS[inv.get(i)?.id];
-        if (it?.armor && !p.armor.get(it.armor.slotIndex)) {
+        if (it?.shield && !p.offhand.get(0)) {
+          p.offhand.set(0, inv.get(i));
+          inv.set(i, null);
+        } else if (it?.armor && !p.armor.get(it.armor.slotIndex)) {
           p.armor.set(it.armor.slotIndex, inv.get(i));
           inv.set(i, null);
         } else quickMove(inv, i, inv, order);
       }
     };
     const row = h('div', { style: { display: 'flex', gap: '8px', alignItems: 'flex-start' } });
-    if (this.tab === 'inventory' && !g.creative) {
-      const armorCol = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px' } });
-      ARMOR_SLOTS.forEach((_, idx) => {
-        armorCol.appendChild(this.slot(p.armor, idx, {
-          extraClass: '.armor-slot', ghost: ['Head', 'Body', 'Legs', 'Feet'][idx],
-          accepts: (s) => ITEMS[s.id]?.armor?.slotIndex === idx,
-          onDouble: () => quickMove(p.armor, idx, inv),
-        }));
-      });
-      row.appendChild(armorCol);
+    if (this.tab === 'inventory' || this.tab === 'creative') {
+      const sideCol = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '3px' } });
+      if (!g.creative) {
+        ARMOR_SLOTS.forEach((_, idx) => {
+          sideCol.appendChild(this.slot(p.armor, idx, {
+            extraClass: '.armor-slot', ghost: ['Head', 'Body', 'Legs', 'Feet'][idx],
+            accepts: (s) => ITEMS[s.id]?.armor?.slotIndex === idx,
+            onDouble: () => quickMove(p.armor, idx, inv),
+          }));
+        });
+      }
+      sideCol.appendChild(this.slot(p.offhand, 0, { extraClass: '.armor-slot', ghost: 'Off', onDouble: () => quickMove(p.offhand, 0, inv) }));
+      row.appendChild(sideCol);
     }
     const grids = h('div.inv-col');
     grids.appendChild(h('div.section-title', 'Backpack'));

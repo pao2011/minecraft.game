@@ -15,10 +15,20 @@ import { encodeChunk, decodeChunk, currentPalette } from '../save/serialize.js';
 import { BLOCKS, B, SOLID } from '../world/blocks.js';
 import { BIOMES } from '../world/biomes.js';
 import { chunkKey, posKey, chunkKeyX, chunkKeyZ, toChunk } from '../world/coords.js';
-import { CHUNK_SIZE, DAY_LENGTH_OPTIONS, WORLD_HEIGHT, SEA_LEVEL } from '../config/constants.js';
+import { CHUNK_SIZE, DAY_LENGTH_OPTIONS, WORLD_HEIGHT, SEA_LEVEL, DIFFICULTY } from '../config/constants.js';
 import { collidesAt } from '../entities/physics.js';
 import { hash4 } from '../util/noise.js';
 import { log } from '../util/log.js';
+import { makeGenerator, DIM_LABEL } from '../world/dimensions.js';
+import { END_ARRIVAL } from '../world/end.js';
+import { TILE } from '../world/tiles.js';
+import { findPortalNear, findSite, buildPortal } from './portals.js';
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+const lightOf = (stack) => {
+  const it = stack && ITEMS[stack.id];
+  return it?.kind === 'block' ? BLOCKS[it.block].emit : 0;
+};
 
 const AUTOSAVE_SECONDS = 45;
 
@@ -46,6 +56,13 @@ export class Game {
     this.lastBreakTool = null;
     this.stats = { chunkGenMs: 0, meshMs: 0, meshCount: 0, lastSaveMs: 0 };
     this.ready = false;
+    this.dim = 'overworld';
+    this.blockDataByDim = { overworld: new Map(), nether: new Map(), end: new Map() };
+    this.fuses = []; // lit blast charges: {x, y, z, t}
+    this.portalTimer = 0;
+    this.portalLock = false;
+    this.switching = false;
+    this.travelling = false;
   }
 
   get creative() {
@@ -56,25 +73,16 @@ export class Game {
 
   async init() {
     const rec = this.record;
-    this.world = new World(rec.seed);
-    for (const [key, c] of Object.entries(rec.containers)) this.world.blockData.set(key, c);
-    this.palette = rec.palette;
-    this.savedKeys = await this.storage.savedChunkKeys(rec.id).catch((err) => {
-      log.error('Could not list saved chunks', err);
-      return new Set();
-    });
-    this.world.on('blockBroken', (...a) => this.onBlockBroken(...a));
-    this.streamer = new ChunkStreamer(this.world, {
-      loadSaved: (cx, cz) => this.loadSavedChunk(cx, cz),
-      onUnload: (c) => this.renderer.removeChunk(c.cx, c.cz),
-    });
+    for (const [key, c] of Object.entries(rec.containers)) this.blockDataByDim.overworld.set(key, c);
+    for (const dim of ['nether', 'end']) for (const [key, c] of Object.entries(rec.dimContainers?.[dim] || {})) this.blockDataByDim[dim].set(key, c);
+    await this.setupDimension(rec.player.dim || 'overworld');
     this.player = new Player();
     this.survival = new Survival(this);
     this.interaction = new Interaction(this);
     this.entities = new EntityManager(this);
     const p = this.player;
     const sp = rec.player;
-    if (!rec.worldSpawn) rec.worldSpawn = this.world.generator.findSpawn();
+    if (!rec.worldSpawn) rec.worldSpawn = makeGenerator('overworld', rec.seed).findSpawn();
     if (sp.pos) {
       Object.assign(p.pos, sp.pos);
       p.yaw = sp.yaw;
@@ -86,6 +94,7 @@ export class Game {
       p.air = sp.air;
       p.inventory = Inventory.fromJSON(sp.inventory, 36);
       p.armor = Inventory.fromJSON(sp.armor, 4);
+      p.offhand = Inventory.fromJSON(sp.offhand, 1);
       p.selected = sp.selected;
       p.spawnPoint = sp.spawn;
       p.flying = this.creative && sp.flying;
@@ -101,6 +110,24 @@ export class Game {
     this.setupWarnings = rec.warnings || [];
   }
 
+  /** Create the world, saved-chunk index and streamer for one dimension (the old ones must be disposed). */
+  async setupDimension(dim) {
+    const rec = this.record;
+    this.dim = dim;
+    this.world = new World(rec.seed, dim);
+    this.world.blockData = this.blockDataByDim[dim];
+    this.palette = rec.palette;
+    this.savedKeys = await this.storage.savedChunkKeys(rec.id, dim).catch((err) => {
+      log.error('Could not list saved chunks', err);
+      return new Set();
+    });
+    this.world.on('blockBroken', (...a) => this.onBlockBroken(...a));
+    this.streamer = new ChunkStreamer(this.world, {
+      loadSaved: (cx, cz) => this.loadSavedChunk(cx, cz, dim),
+      onUnload: (c) => this.renderer.removeChunk(c.cx, c.cz),
+    });
+  }
+
   giveStartingItems() {
     const inv = this.player.inventory;
     if (this.creative) {
@@ -111,12 +138,12 @@ export class Game {
     }
   }
 
-  loadSavedChunk(cx, cz) {
+  loadSavedChunk(cx, cz, dim = this.dim) {
     const key = chunkKey(cx, cz);
     const pendingUnload = this.world.unloadedModified.get(key);
     if (pendingUnload) return Promise.resolve({ blocks: pendingUnload.blocks, meta: pendingUnload.meta });
     if (!this.savedKeys.has(key)) return null;
-    return this.storage.loadChunk(this.record.id, cx, cz).then((rec) => {
+    return this.storage.loadChunk(this.record.id, cx, cz, dim).then((rec) => {
       if (!rec) return null;
       try {
         return decodeChunk(rec, this.palette);
@@ -147,6 +174,7 @@ export class Game {
 
   /** Called every frame while the loading screen is visible. */
   updateLoading(dt) {
+    if (this.switching) return false; // old dimension is still being saved
     this.streamer.update(this.player.pos.x, this.player.pos.z, this.renderDistance, 40);
     this.processMeshes(30);
     this.updateEnvironment(0);
@@ -158,7 +186,11 @@ export class Game {
   finishLoading() {
     this.ready = true;
     const p = this.player;
-    if (this.needsUnstick) {
+    if (this.pendingTravel) {
+      this.arrive(this.pendingTravel);
+      this.pendingTravel = null;
+      this.autosaveTimer = AUTOSAVE_SECONDS;
+    } else if (this.needsUnstick) {
       p.unstick(this.world);
       this.needsUnstick = false;
     }
@@ -192,6 +224,8 @@ export class Game {
         p.flying = !p.flying;
         if (p.flying) p.vel.y = 0;
       }
+      if (inp.edges.has('swap')) this.swapHands();
+      if (inp.edges.has('coords')) this.settings.set('showCoords', !this.settings.get('showCoords'));
       this.input.setCreative(this.creative, p.flying);
       p.update(dt, inp, this.world, {
         creative: this.creative,
@@ -210,6 +244,8 @@ export class Game {
         this.world.randomTick(p.pos.x, p.pos.z, 3);
       }
       this.tickFurnaces(dt);
+      this.updatePortals(dt);
+      this.updateFuses(dt);
       this.advanceTime(dt);
       this.updateWeather(dt);
       rec.playtime += dt;
@@ -238,14 +274,30 @@ export class Game {
   }
 
   syncHeld(force = false) {
-    const s = this.player.heldStack;
-    const key = s ? s.id : null;
-    if (!force && key === this.heldKey) return;
-    this.heldKey = key;
-    if (!key) return this.renderer.setHeld(null);
-    const it = ITEMS[key];
-    if (it.kind === 'block' && BLOCKS[it.block].shape === 'cube') this.renderer.setHeld(key, { blockFaces: BLOCKS[it.block].faces });
-    else this.renderer.setHeld(key, { iconTexture: this.entities.iconTexture(key) });
+    const p = this.player;
+    for (const [hand, stack] of [['main', p.heldStack], ['off', p.offhand.get(0)]]) {
+      const key = stack ? stack.id : null;
+      if (!force && key === this.heldKeys?.[hand]) continue;
+      (this.heldKeys ??= {})[hand] = key;
+      if (!key) {
+        this.renderer.setHeld(null, {}, hand);
+        continue;
+      }
+      const it = ITEMS[key];
+      if (it.kind === 'block' && BLOCKS[it.block].shape === 'cube') this.renderer.setHeld(key, { blockFaces: BLOCKS[it.block].faces }, hand);
+      else this.renderer.setHeld(key, { iconTexture: this.entities.iconTexture(key) }, hand);
+    }
+  }
+
+  /** Swap the selected hotbar item with the offhand item. */
+  swapHands() {
+    const p = this.player;
+    if (p.dead) return;
+    const a = p.inventory.get(p.selected), b = p.offhand.get(0);
+    p.inventory.set(p.selected, b);
+    p.offhand.set(0, a);
+    this.interaction.cancelActions();
+    this.audio.play('click', { volume: 0.6 });
   }
 
   // ---- Time and weather ---------------------------------------------------------------------
@@ -323,7 +375,7 @@ export class Game {
     const underwater = p.headInWater;
     const biome = BIOMES[this.world.generator.column(Math.floor(p.pos.x), Math.floor(p.pos.z)).biome];
     this.currentBiome = biome;
-    const precip = biome.weather === 'none' ? null : biome.weather === 'snow' || (biome.key === 'mountains' && p.pos.y > 95) ? 'snow' : 'rain';
+    const precip = this.dim !== 'overworld' || biome.weather === 'none' ? null : biome.weather === 'snow' || (biome.key === 'mountains' && p.pos.y > 95) ? 'snow' : 'rain';
     const env = this.renderer.setEnvironment({
       timeOfDay: rec.time.tod,
       rain: precip ? this.rain : this.rain * 0.4,
@@ -331,6 +383,7 @@ export class Game {
       inLava: p.headInLava,
       renderDistance: this.renderDistance,
       brightness: this.settings.get('brightness'),
+      dimension: this.dim,
     });
     this.heightCacheTime += dt;
     if (this.heightCacheTime > 1) {
@@ -343,7 +396,7 @@ export class Game {
     }
     // Ambient audio: open sky gives wind, enclosed dark spaces underground give cave tone.
     const [sky] = this.world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
-    const underground = sky < 6 && eye.y < SEA_LEVEL + 10;
+    const underground = this.dim !== 'overworld' || (sky < 6 && eye.y < SEA_LEVEL + 10);
     this.audio.setListener(eye.x, eye.y, eye.z, p.yaw);
     this.audio.setAmbient({
       wind: underground ? 0 : Math.min(1, 0.3 + Math.max(0, eye.y - SEA_LEVEL) / 60) * (sky / 15),
@@ -449,6 +502,8 @@ export class Game {
     const bob = this.settings.get('reducedMotion') ? 0 : walking;
     const [sky, blk] = this.world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
     this.renderer.setHandBrightness(this.renderer.lightLevelToBrightness(sky, blk));
+    // A held torch (either hand) lights the surroundings.
+    this.renderer.setHeldLight(eye.x, eye.y, eye.z, Math.max(lightOf(p.heldStack), lightOf(p.offhand.get(0))));
     this.renderer.render({ x: eye.x, y: eye.y, z: eye.z, yaw, pitch }, dt, { showHand: !p.dead && this.app.ui.handVisible, walking: bob });
   }
 
@@ -462,8 +517,11 @@ export class Game {
   onBlockBroken(x, y, z, id, meta, cause, data) {
     // Containers spill their contents; drops depend on the tool that broke the block.
     if (data?.slots) for (const s of data.slots) if (s) this.entities.spawnItem({ ...s }, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+    if (id === B.blast_charge && cause === 'explosion') this.ignite(x, y, z, 0.4);
+    if (id === B.void_crystal && cause !== 'replace') this.explode({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }, 3, { damage: 10 });
     if (cause === 'player' && this.creative) return;
     if (cause === 'replace') return;
+    if (cause === 'explosion' && Math.random() > 0.3) return; // most debris is destroyed
     const tool = cause === 'player' ? this.lastBreakTool : null;
     const drops = cause === 'player' ? blockDrops(id, meta, tool) : blockDrops(id, meta, BLOCKS[id].toolLevel ? null : tool);
     for (const s of drops) this.entities.spawnItem(s, { x: x + 0.5, y: y + 0.4, z: z + 0.5 });
@@ -526,7 +584,7 @@ export class Game {
     this.interaction.resetMining();
     if (!restored && !this.record.rules.keepInventory) {
       // Scatter everything at the death spot; nothing is deleted.
-      for (const inv of [p.inventory, p.armor]) {
+      for (const inv of [p.inventory, p.armor, p.offhand]) {
         for (let i = 0; i < inv.size; i++) {
           const s = inv.get(i);
           if (s) this.entities.spawnItem(s, { x: p.pos.x, y: p.pos.y + 0.8, z: p.pos.z }, { x: (Math.random() - 0.5) * 4, y: 2 + Math.random() * 3, z: (Math.random() - 0.5) * 4 }, 2);
@@ -534,7 +592,7 @@ export class Game {
         }
       }
     }
-    const causes = { fall: 'fell from a high place', lava: 'tried to swim in lava', drown: 'ran out of air', starve: 'starved', cactus: 'hugged a cactus', mob: 'was defeated by a creature', projectile: 'was struck by a bone shard', void: 'fell out of the world' };
+    const causes = { explosion: 'was blown up', fall: 'fell from a high place', lava: 'tried to swim in lava', drown: 'ran out of air', starve: 'starved', cactus: 'hugged a cactus', mob: 'was defeated by a creature', projectile: 'was struck by a bone shard', void: 'fell out of the world' };
     this.deathMessage = `You ${causes[source?.type] || 'died'}.`;
     this.app.showDeath(this.deathMessage, this.record.rules.keepInventory);
     this.save('death');
@@ -543,6 +601,12 @@ export class Game {
   respawn() {
     const p = this.player;
     this.survival.resetForRespawn();
+    if (this.dim !== 'overworld') {
+      // Dying in another dimension: return to the overworld (bed or world spawn).
+      const sp = p.spawnPoint || this.record.worldSpawn;
+      this.changeDimension('overworld', { kind: 'respawn', x: Math.floor(sp.x), z: Math.floor(sp.z) });
+      return true;
+    }
     let target = null;
     const sp = p.spawnPoint;
     if (sp && this.world.isLoaded(sp.x, sp.z) && this.world.getBlock(Math.floor(sp.x), Math.floor(sp.y), Math.floor(sp.z)) === B.bed) {
@@ -557,6 +621,7 @@ export class Game {
     p.pitch = 0;
     this.needsUnstickAfterLoad = true;
     this.save('respawn');
+    return false;
   }
 
   /** Free 2-high spot next to a block, for bed respawns. */
@@ -580,6 +645,10 @@ export class Game {
 
   useBed(x, y, z) {
     const p = this.player;
+    if (this.dim !== 'overworld') {
+      this.app.ui.toast("You can't sleep in this realm", 'deny');
+      return;
+    }
     p.spawnPoint = { x, y, z };
     if (!this.isNight && this.record.weather.state !== 'rain') {
       this.app.ui.toast('Respawn point set. You can only sleep at night.');
@@ -658,6 +727,167 @@ export class Game {
     if (kind === 'deny') this.audio.play('deny');
   }
 
+  // ---- Portals, dimensions, explosions ----------------------------------------------------------
+
+  updatePortals(dt) {
+    const p = this.player;
+    if (p.dead || this.travelling) return;
+    const touching = p.touching || [];
+    const nether = touching.find((t) => t.id === B.nether_portal);
+    const end = touching.some((t) => t.id === B.end_portal);
+    if (!nether && !end) {
+      this.portalTimer = 0;
+      this.portalLock = false;
+      this.app.ui.hud.setPortal(0);
+      return;
+    }
+    if (this.portalLock) return;
+    if (this.portalTimer === 0) this.audio.play('portal');
+    this.portalTimer += dt;
+    const need = end ? 1.5 : this.creative ? 0.2 : 3;
+    this.app.ui.hud.setPortal(Math.min(1, this.portalTimer / need));
+    if (this.portalTimer < need) return;
+    this.portalTimer = 0;
+    this.app.ui.hud.setPortal(0);
+    const px = Math.floor(p.pos.x), pz = Math.floor(p.pos.z);
+    if (end) {
+      if (this.dim === 'overworld') this.changeDimension('end', { kind: 'end', x: END_ARRIVAL.x, z: END_ARRIVAL.z });
+      else {
+        const sp = p.spawnPoint || this.record.worldSpawn;
+        this.changeDimension('overworld', { kind: 'respawn', x: Math.floor(sp.x), z: Math.floor(sp.z) });
+      }
+    } else if (this.dim === 'overworld') this.changeDimension('nether', { kind: 'portal', x: Math.floor(px / 8), z: Math.floor(pz / 8), axis: nether.meta & 1 });
+    else this.changeDimension('overworld', { kind: 'portal', x: px * 8, z: pz * 8, axis: nether.meta & 1 });
+  }
+
+  /**
+   * Leave the current dimension: flush saves, swap the world, show the loading screen while the
+   * destination streams in; arrive() then places the player. trv: {kind, x, z, axis}.
+   */
+  async changeDimension(dim, trv) {
+    if (this.travelling) return false;
+    this.travelling = true;
+    this.switching = true;
+    try {
+      this.app.beginTravel(dim === 'overworld' ? 'Returning to the Overworld' : `Entering the ${DIM_LABEL[dim]}`);
+      while (this.saving) await sleepMs(20);
+      if (!(await this.save('dimension'))) {
+        this.app.cancelTravel();
+        return false;
+      }
+      const p = this.player;
+      this.interaction.cancelActions();
+      this.entities.clear();
+      this.streamer.dispose();
+      this.renderer.clearChunks();
+      this.meshQueue.clear();
+      await this.setupDimension(dim);
+      p.pos = { x: trv.x + 0.5, y: dim === 'nether' ? 70 : dim === 'end' ? 70 : 100, z: trv.z + 0.5 };
+      p.vel = { x: 0, y: 0, z: 0 };
+      p.flying = false;
+      p.fallStart = null;
+      this.heightCache.clear();
+      this.pendingTravel = { ...trv, dim };
+      this.ready = false;
+      this.portalTimer = 0;
+      return true;
+    } catch (err) {
+      log.error('Dimension change failed', err);
+      this.app.ui.toast(`Could not travel: ${err.message}`, 'warn');
+      return false;
+    } finally {
+      this.switching = false;
+      this.travelling = false;
+    }
+  }
+
+  /** Place the player in the destination once its terrain is loaded. */
+  arrive(trv) {
+    const w = this.world, p = this.player;
+    const diff = DIFFICULTY[this.record.difficulty];
+    if (trv.kind === 'portal') {
+      let spot = findPortalNear(w, trv.x, trv.z, 16);
+      if (!spot) {
+        const nether = trv.dim === 'nether';
+        const site = findSite(w, trv.x, trv.z, nether ? 34 : 2, 118, 10) || { x: trv.x, y: nether ? 70 : w.generator.column(trv.x, trv.z).h + 1, z: trv.z };
+        buildPortal(w, site.x, site.y, site.z, trv.axis);
+        spot = { ...site, axis: trv.axis };
+      }
+      p.pos = { x: spot.x + 0.5, y: spot.y, z: spot.z + 0.5 };
+      this.portalLock = true; // stay inside without bouncing back
+    } else if (trv.kind === 'end') {
+      const top = w.generator.column(END_ARRIVAL.x, END_ARRIVAL.z).h;
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -2; dz <= 2; dz++) {
+          w.setBlock(END_ARRIVAL.x + dx, top, END_ARRIVAL.z + dz, B.obsidian);
+          for (let h = 1; h <= 3; h++) w.setBlock(END_ARRIVAL.x + dx, top + h, END_ARRIVAL.z + dz, B.air);
+        }
+      }
+      p.pos = { x: END_ARRIVAL.x + 0.5, y: top + 1, z: END_ARRIVAL.z + 0.5 };
+      p.yaw = Math.PI; // face the island centre
+      if (this.record.flags.dragonDefeated || this.creative || diff.hostileCap === 0) this.placeExitPortal();
+      else this.entities.spawnBoss();
+    } else {
+      let target = null;
+      const sp = p.spawnPoint;
+      if (sp && w.getBlock(Math.floor(sp.x), Math.floor(sp.y), Math.floor(sp.z)) === B.bed) target = this.findFreeSpotNear(Math.floor(sp.x), Math.floor(sp.y), Math.floor(sp.z));
+      if (!target) target = { ...this.record.worldSpawn };
+      Object.assign(p.pos, target);
+      this.needsUnstickAfterLoad = true;
+    }
+    p.pitch = 0;
+    this.needsUnstickAfterLoad = true;
+    this.syncHeld(true);
+  }
+
+  placeExitPortal() {
+    const w = this.world;
+    const y = w.generator.column(0, 0).h + 1;
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) w.setBlock(dx, y, dz, B.end_portal, 2);
+  }
+
+  onBossKilled() {
+    this.record.flags.dragonDefeated = true;
+    this.placeExitPortal();
+    this.app.ui.toast('The Void Drake has fallen! A gate to home opens at the island centre.');
+    this.audio.play('levelup');
+    this.save('boss');
+  }
+
+  ignite(x, y, z, t = 3) {
+    if (this.fuses.some((f) => f.x === x && f.y === y && f.z === z)) return;
+    this.fuses.push({ x, y, z, t });
+    this.audio.play('fizz', { pos: { x, y, z } });
+  }
+
+  updateFuses(dt) {
+    for (const f of [...this.fuses]) {
+      f.t -= dt;
+      if (f.t > 0) continue;
+      this.fuses.splice(this.fuses.indexOf(f), 1);
+      if (this.world.getBlock(f.x, f.y, f.z) === B.blast_charge) this.world.setBlock(f.x, f.y, f.z, B.air);
+      this.explode({ x: f.x + 0.5, y: f.y + 0.5, z: f.z + 0.5 }, 3.5, { damage: 18 });
+    }
+  }
+
+  /** Blast at pos: breaks weak blocks, hurts the player and creatures by distance. */
+  explode(pos, radius, { damage = radius * 4, destroy = true } = {}) {
+    if (destroy) this.world.explode(pos.x, pos.y, pos.z, radius);
+    this.audio.play('explode', { pos });
+    this.renderer.spawnBlockParticles(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z), TILE.stone, 0.7, 28);
+    const reach = radius + 2;
+    const p = this.player;
+    const d = Math.hypot(p.pos.x - pos.x, p.pos.y + 0.9 - pos.y, p.pos.z - pos.z);
+    if (d < reach) {
+      this.cameraShake = Math.max(this.cameraShake, 0.5);
+      if (!p.dead) this.survival.damage(damage * (1 - d / reach), { type: 'explosion', from: pos });
+    }
+    for (const m of [...this.entities.mobs]) {
+      const md = Math.hypot(m.pos.x - pos.x, m.pos.y + m.height / 2 - pos.y, m.pos.z - pos.z);
+      if (!m.dead && md < reach) this.entities.attackMob(m, damage * (1 - md / reach), pos);
+    }
+  }
+
   // ---- Saving -------------------------------------------------------------------------------
 
   snapshotRecord() {
@@ -676,18 +906,24 @@ export class Game {
       air: p.air,
       inventory: p.inventory.toJSON(),
       armor: p.armor.toJSON(),
+      offhand: p.offhand.toJSON(),
+      dim: this.dim,
       selected: p.selected,
       spawn: p.spawnPoint,
       flying: p.flying,
       dead: p.dead,
     };
-    const containers = {};
-    for (const [k, v] of this.world.blockData) {
-      if (v.type === 'chest') containers[k] = { type: 'chest', slots: v.slots.map((s) => (s ? { ...s } : null)) };
-      else if (v.type === 'furnace') containers[k] = { type: 'furnace', slots: v.slots.map((s) => (s ? { ...s } : null)), burn: v.burn, burnMax: v.burnMax, progress: v.progress };
-    }
-    rec.containers = containers;
-    rec.entities = this.entities.serialize();
+    const pack = (map) => {
+      const out = {};
+      for (const [k, v] of map) {
+        if (v.type === 'chest') out[k] = { type: 'chest', slots: v.slots.map((s) => (s ? { ...s } : null)) };
+        else if (v.type === 'furnace') out[k] = { type: 'furnace', slots: v.slots.map((s) => (s ? { ...s } : null)), burn: v.burn, burnMax: v.burnMax, progress: v.progress };
+      }
+      return out;
+    };
+    rec.containers = pack(this.blockDataByDim.overworld);
+    rec.dimContainers = { nether: pack(this.blockDataByDim.nether), end: pack(this.blockDataByDim.end) };
+    if (this.dim === 'overworld') rec.entities = this.entities.serialize(); // other realms' creatures are not kept
     const { warnings, ...clean } = rec;
     void warnings;
     return clean;
@@ -703,11 +939,11 @@ export class Game {
     try {
       for (const c of this.world.chunks.values()) {
         if (!c.dirtySave) continue;
-        chunks.push({ cx: c.cx, cz: c.cz, data: encodeChunk(c.blocks, c.meta) });
+        chunks.push({ cx: c.cx, cz: c.cz, dim: this.dim, data: encodeChunk(c.blocks, c.meta) });
         savedChunkObjs.push(c);
       }
       const unloaded = [...this.world.unloadedModified.entries()];
-      for (const [, u] of unloaded) chunks.push({ cx: u.cx, cz: u.cz, data: encodeChunk(u.blocks, u.meta) });
+      for (const [, u] of unloaded) chunks.push({ cx: u.cx, cz: u.cz, dim: this.dim, data: encodeChunk(u.blocks, u.meta) });
       const record = this.snapshotRecord();
       if (thumbnail) record.thumbnail = thumbnail;
       this.app.ui.hud.setSaving(true);
@@ -735,7 +971,8 @@ export class Game {
     this.streamer.dispose();
     this.entities.dispose();
     this.renderer.clearChunks();
-    this.renderer.setHeld(null);
+    this.renderer.setHeld(null, {}, 'main');
+    this.renderer.setHeld(null, {}, 'off');
     this.renderer.setSelection(null);
     this.renderer.setCrack(null);
   }

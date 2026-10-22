@@ -183,8 +183,14 @@ function leaves(t, tinted, color) {
   }
 }
 
-function ore(t, colors, count = 5, size = 3) {
-  stone(t);
+function cinder(t) {
+  t.blend([112, 50, 50], [88, 36, 42], 3, 8);
+  t.speckle([142, 72, 66], 0.06);
+  t.speckle([58, 22, 26], 0.07);
+}
+
+function ore(t, colors, count = 5, size = 3, base = stone) {
+  base(t);
   for (let k = 0; k < count; k++) {
     const cx = t.rng.int(2, 13), cy = t.rng.int(2, 13);
     for (let s = 0; s < size + t.rng.int(0, 2); s++) {
@@ -237,6 +243,10 @@ function cropStage(t, stage, kind) {
     if (kind === 'carrots' && stage === 3) {
       t.set(x, S - 1, [235, 120, 30]);
       t.set(x, S - 2, [245, 140, 40]);
+    }
+    if (kind === 'potatoes' && stage === 3) {
+      t.set(x, S - 1, [206, 170, 110]);
+      t.set(x + 1, S - 1, [186, 150, 94]);
     }
   }
 }
@@ -684,6 +694,144 @@ const P = {
     }
   },
   fence_post: (t) => planks(t, [172, 136, 86]),
+  tidestone_ore: (t) => ore(t, [[48, 88, 210], [92, 142, 246]], 6, 3),
+  verdant_ore: (t) => ore(t, [[36, 190, 96], [132, 240, 172]], 4, 3),
+  quartz_ore: (t) => ore(t, [[238, 232, 224], [252, 250, 246]], 6, 3, cinder),
+  nether_gold_ore: (t) => ore(t, [[250, 214, 60], [230, 180, 40]], 5, 3, cinder),
+  abyssal_ore: (t) => ore(t, [[104, 76, 66], [162, 122, 98]], 3, 3, cinder),
+  coal_block(t) {
+    t.blend([36, 36, 40], [22, 22, 26], 3, 5);
+    t.speckle([70, 70, 78], 0.06);
+    frame(t, [14, 14, 18]);
+  },
+  copper_block(t) {
+    t.blend([206, 118, 72], [188, 104, 62], 5, 4);
+    frame(t, [140, 70, 40]);
+    t.rect(1, 1, 14, 1, [240, 164, 112]);
+  },
+  tidestone_block(t) {
+    t.blend([46, 86, 202], [34, 64, 168], 3, 6);
+    t.speckle([120, 170, 255], 0.05);
+    frame(t, [24, 44, 120]);
+  },
+  verdant_block(t) {
+    t.blend([40, 178, 96], [30, 142, 78], 3, 6);
+    t.speckle([150, 250, 190], 0.05);
+    frame(t, [20, 96, 52]);
+  },
+  ember_block(t) {
+    t.blend([162, 40, 30], [120, 28, 24], 3, 6);
+    t.speckle([255, 170, 70], 0.1);
+    frame(t, [80, 16, 16]);
+  },
+  starstone_block(t) {
+    t.blend([200, 174, 255], [150, 120, 232], 3, 6);
+    t.speckle([255, 255, 255], 0.07);
+    frame(t, [96, 72, 170]);
+  },
+  abyssal_block(t) {
+    t.blend([86, 64, 58], [64, 46, 42], 5, 4);
+    frame(t, [40, 28, 26]);
+    t.rect(1, 7, 14, 1, [40, 28, 26]);
+    t.rect(7, 1, 1, 14, [40, 28, 26]);
+  },
+  quartz_block(t) {
+    t.blend([242, 238, 232], [228, 224, 216], 6, 3);
+    t.speckle([204, 200, 192], 0.04);
+    frame(t, [214, 210, 202]);
+  },
+  quartz_pillar(t) {
+    for (let x = 0; x < S; x++) for (let y = 0; y < S; y++) t.set(x, y, vary(x % 5 === 0 ? [206, 202, 194] : [240, 236, 230], 4, t.rng));
+  },
+  cinderrock: (t) => cinder(t),
+  lumen_stone(t) {
+    t.blend([242, 202, 112], [222, 172, 82], 3, 6);
+    t.speckle([255, 246, 196], 0.12);
+    t.speckle([186, 128, 52], 0.08);
+  },
+  magma(t) {
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const n = t.noise.noise2(x / 3, y / 3);
+      t.set(x, y, vary(n > 0.1 ? [250, 132, 40] : [66, 26, 22], 8, t.rng));
+    }
+  },
+  cinder_bricks: (t) => bricks(t, [98, 40, 48], [48, 20, 26], 4, 8),
+  obsidian(t) {
+    t.blend([22, 12, 38], [36, 18, 58], 3, 4);
+    t.speckle([96, 62, 150], 0.05);
+    t.speckle([8, 4, 16], 0.08);
+  },
+  void_stone(t) {
+    t.blend([228, 226, 162], [206, 204, 140], 3, 6);
+    t.speckle([248, 246, 196], 0.06);
+    t.speckle([170, 168, 110], 0.06);
+  },
+  frame_top(t) {
+    t.blend([36, 112, 100], [26, 88, 80], 4, 5);
+    frame(t, [14, 52, 48]);
+    t.rect(5, 5, 6, 6, [10, 30, 28]);
+  },
+  frame_side(t) {
+    t.blend([200, 204, 150], [176, 180, 126], 3, 5);
+    t.rect(0, 0, 16, 3, [36, 112, 100]);
+    t.rect(0, 3, 16, 1, [14, 52, 48]);
+  },
+  frame_eye(t) {
+    t.blend([36, 112, 100], [26, 88, 80], 4, 5);
+    frame(t, [14, 52, 48]);
+    t.rect(5, 5, 6, 6, [10, 30, 28]);
+    t.rect(6, 6, 4, 4, [64, 210, 160]);
+    t.rect(7, 7, 2, 2, [16, 40, 32]);
+  },
+  nether_portal(t) {
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const n = t.noise.noise2(x / 2.5 + y / 9, y / 2.5);
+      const c = n > 0.2 ? [210, 120, 250] : n > -0.2 ? [150, 60, 220] : [96, 30, 170];
+      t.set(x, y, vary(c, 10, t.rng), n > -0.35 ? 170 : 120);
+    }
+  },
+  end_portal(t) {
+    t.fill([6, 14, 22], 4, 230);
+    for (let k = 0; k < 18; k++) t.set(t.rng.int(0, 15), t.rng.int(0, 15), t.rng() < 0.5 ? [110, 220, 255] : [220, 170, 255], 255);
+  },
+  cobweb(t) {
+    t.clear();
+    const c = [232, 232, 238];
+    for (let i = 0; i < S; i++) {
+      t.set(i, i, c);
+      t.set(15 - i, i, c);
+      t.set(8, i, c);
+      t.set(i, 8, c);
+    }
+    for (const r of [3, 6]) for (let a = 0; a < 40; a++) t.set(Math.round(7.5 + Math.cos((a / 40) * 6.28) * r), Math.round(7.5 + Math.sin((a / 40) * 6.28) * r), c);
+  },
+  potatoes_0: (t) => cropStage(t, 0, 'potatoes'),
+  potatoes_1: (t) => cropStage(t, 1, 'potatoes'),
+  potatoes_2: (t) => cropStage(t, 2, 'potatoes'),
+  potatoes_3: (t) => cropStage(t, 3, 'potatoes'),
+  void_crystal(t) {
+    const seeds = Array.from({ length: 6 }, () => [t.rng() * 16, t.rng() * 16, 0.7 + t.rng() * 0.5]);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      let best = 99, second = 99, bi = 0;
+      seeds.forEach(([sx, sy], i) => {
+        for (const ox of [-16, 0, 16]) for (const oy of [-16, 0, 16]) {
+          const d = Math.hypot(x - sx - ox, y - sy - oy);
+          if (d < best) { second = best; best = d; bi = i; } else if (d < second) second = d;
+        }
+      });
+      t.set(x, y, vary(second - best < 1 ? [255, 190, 255] : mul([190, 60, 220], seeds[bi][2]), 6, t.rng));
+    }
+  },
+  tnt_side(t) {
+    t.blend([200, 48, 44], [176, 36, 36], 4, 5);
+    t.rect(0, 5, 16, 6, [236, 232, 220]);
+    for (const x of [3, 4, 7, 8, 9, 12]) t.rect(x, 6, 1, 4, [40, 40, 44]);
+  },
+  tnt_top(t) {
+    t.blend([200, 48, 44], [176, 36, 36], 4, 5);
+    frame(t, [236, 232, 220], 1);
+    t.rect(7, 7, 2, 2, [40, 40, 44]);
+  },
 };
 
 /** Paint one tile by name into a fresh Tile. */

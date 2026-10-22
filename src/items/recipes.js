@@ -29,7 +29,7 @@ recipe('workbench', 1, { '#planks': 4 });
 recipe('torch', 4, { '#fuel_coal': 1, stick: 1 });
 
 // Workbench: tools.
-const toolHeads = { wood: '#planks', stone: 'cobblestone', copper: 'copper_ingot', iron: 'iron_ingot', gold: 'gold_ingot', starstone: 'starstone' };
+const toolHeads = { wood: '#planks', stone: 'cobblestone', copper: 'copper_ingot', iron: 'iron_ingot', gold: 'gold_ingot', starstone: 'starstone', crystal: 'azure_crystal', abyssal: 'abyssal_ingot' };
 const toolCost = { pickaxe: [3, 2], axe: [3, 2], shovel: [1, 2], sword: [2, 1], hoe: [2, 2] };
 for (const tier of Object.keys(TIERS)) {
   for (const [type, [heads, sticks]] of Object.entries(toolCost)) {
@@ -75,6 +75,33 @@ recipe('bread', 1, { wheat: 3 }, 'workbench', 'food');
 recipe('bone_meal', 3, { bone: 1 }, 'hand', 'basics');
 recipe('mossy_cobblestone', 1, { cobblestone: 1, oak_leaves: 1 }, 'workbench', 'building');
 
+// Minerals: storage blocks and conversions.
+for (const [blk, item] of [['coal_block', 'coal'], ['copper_block', 'copper_ingot'], ['tidestone_block', 'tidestone'], ['verdant_block', 'verdant_gem'], ['ember_block', 'ember_dust'], ['starstone_block', 'starstone'], ['abyssal_block', 'abyssal_ingot']]) {
+  recipe(blk, 1, { [item]: 9 }, 'workbench', 'building');
+  recipe(item, 9, { [blk]: 1 }, 'workbench', 'basics');
+}
+recipe('abyssal_ingot', 1, { abyssal_scrap: 4, gold_ingot: 4 }, 'workbench', 'basics');
+recipe('quartz_block', 1, { quartz: 4 }, 'workbench', 'building');
+recipe('quartz_pillar', 2, { quartz_block: 2 }, 'workbench', 'building');
+recipe('cinder_bricks', 1, { cinder_brick: 4 }, 'workbench', 'building');
+recipe('ember_powder', 2, { ember_rod: 1 });
+recipe('void_eye', 1, { void_pearl: 1, ember_powder: 1 }, 'workbench', 'tools');
+recipe('blast_charge', 1, { blast_powder: 5, sand: 4 }, 'workbench', 'functional');
+recipe('cobweb', 1, { string: 5 }, 'workbench', 'building');
+// Gear and food.
+recipe('bow', 1, { stick: 3, string: 3 }, 'workbench', 'tools');
+recipe('arrow', 4, { flint: 1, stick: 1, feather: 1 }, 'workbench', 'tools');
+recipe('shield', 1, { '#planks': 6, iron_ingot: 1 }, 'workbench', 'armor');
+recipe('shears', 1, { iron_ingot: 2 }, 'workbench', 'tools');
+recipe('flint_and_steel', 1, { iron_ingot: 1, flint: 1 }, 'workbench', 'tools');
+recipe('fishing_rod', 1, { stick: 3, string: 2 }, 'workbench', 'tools');
+recipe('compass', 1, { iron_ingot: 4, ember_dust: 1 }, 'workbench', 'tools');
+recipe('clock', 1, { gold_ingot: 4, ember_dust: 1 }, 'workbench', 'tools');
+recipe('bowl', 4, { '#planks': 3 }, 'hand', 'basics');
+recipe('glowcap_stew', 1, { glowcap: 2, bowl: 1 }, 'workbench', 'food');
+recipe('golden_apple', 1, { apple: 1, gold_ingot: 8 }, 'workbench', 'food');
+recipe('golden_carrot', 1, { carrot: 1, gold_ingot: 8 }, 'workbench', 'food');
+
 export const SMELTING = {
   raw_copper: 'copper_ingot',
   raw_iron: 'iron_ingot',
@@ -91,6 +118,10 @@ export const SMELTING = {
   raw_ham: 'cooked_ham',
   raw_fowl: 'roast_fowl',
   raw_mutton: 'cooked_mutton',
+  raw_fish: 'cooked_fish',
+  raw_hare: 'cooked_hare',
+  potato: 'baked_potato',
+  cinderrock: 'cinder_brick',
 };
 export const SMELT_TIME = 6; // seconds per item
 

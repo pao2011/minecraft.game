@@ -176,6 +176,7 @@ export function meshSection(pad, climate, opts = {}) {
 }
 
 function faceTile(d, f, meta) {
+  if (d.key === 'end_frame' && f === 2 && meta & 4) return TILE.frame_eye;
   if (d.axis && (meta & 3)) {
     const axis = meta & 3; // 1 = x, 2 = z
     const endFace = axis === 1 ? f <= 1 : f >= 4;
@@ -286,6 +287,7 @@ function emitBoxes(pad, x, y, z, pi, id, d, meta) {
   else if (d.shape === 'cactus') boxes = [[0.0625, 0, 0.0625, 0.9375, 1, 0.9375]];
   else boxes = getBoxes(id, meta, nb, 'render');
   const own = light[pi];
+  const buf = d.render === 'translucent' ? transBuf : opaqueBuf;
   for (const box of boxes) {
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
@@ -311,7 +313,7 @@ function emitBoxes(pad, x, y, z, pi, id, d, meta) {
         const [tu, tv] = tileUV(tile, u, vv);
         return [x + px, y + py, z + pz, tu, tv, sky, blk, Math.round(face.shade * 255)];
       });
-      opaqueBuf.quad(v, WHITE, 0, false);
+      buf.quad(v, WHITE, 0, false);
     }
   }
 }

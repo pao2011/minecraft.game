@@ -5,6 +5,7 @@ import { ITEMS } from '../items/items.js';
 import { B } from '../world/blocks.js';
 
 const BYPASS_ARMOR = new Set(['fall', 'starve', 'drown', 'void']);
+const BLOCKABLE = new Set(['mob', 'projectile']);
 
 export class Survival {
   constructor(game) {
@@ -152,6 +153,7 @@ export class Survival {
     const p = this.player;
     if (p.dead || this.creative || amount <= 0) return 0;
     if (this.invuln > 0) return 0;
+    if (this.shieldBlocks(source, amount)) return 0;
     let dmg = amount;
     if (!BYPASS_ARMOR.has(source.type)) {
       const armor = p.armorPoints;
@@ -172,6 +174,29 @@ export class Survival {
     this.game.onPlayerHurt(dmg, source);
     if (p.health <= 0) this.game.onPlayerDeath(source);
     return dmg;
+  }
+
+  /** A raised shield (offhand or main hand, while sneaking) stops frontal creature hits and shots. */
+  shieldBlocks(source, amount) {
+    const p = this.player;
+    if (!p.sneaking || !source.from || !BLOCKABLE.has(source.type)) return false;
+    let inv = null, idx = 0;
+    if (ITEMS[p.offhand.get(0)?.id]?.shield) inv = p.offhand;
+    else if (ITEMS[p.heldStack?.id]?.shield) [inv, idx] = [p.inventory, p.selected];
+    if (!inv) return false;
+    const dx = source.from.x - p.pos.x, dz = source.from.z - p.pos.z;
+    const l = Math.hypot(dx, dz) || 1;
+    if ((-Math.sin(p.yaw) * dx + -Math.cos(p.yaw) * dz) / l < 0.25) return false; // attacker is behind
+    const s = inv.get(idx);
+    s.damage = (s.damage || 0) + Math.max(1, Math.round(amount));
+    if (s.damage >= ITEMS[s.id].tool.durability) {
+      inv.set(idx, null);
+      this.game.onItemBroken(s.id);
+    } else inv.set(idx, s);
+    this.invuln = 0.4;
+    this.game.audio.play('shield');
+    this.game.input.vibrate(20);
+    return true;
   }
 
   wearArmor(amount) {
@@ -201,6 +226,7 @@ export class Survival {
     const p = this.player;
     p.hunger = Math.min(PLAYER.maxHunger, p.hunger + f.hunger);
     p.saturation = Math.min(p.hunger, p.saturation + f.saturation);
+    if (f.heal) this.heal(f.heal);
     return true;
   }
 

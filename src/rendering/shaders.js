@@ -9,9 +9,11 @@ uniform float uWave;
 varying vec2 vUv;
 varying vec3 vLight;
 varying vec3 vTint;
+varying vec3 vWorld;
 varying float vFogDepth;
 void main() {
   vUv = uv;
+  vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
   vLight = light.xyz;
   vTint = tint;
   vec3 p = position;
@@ -43,11 +45,14 @@ uniform float uFogNear;
 uniform float uFogFar;
 uniform float uMinLight;
 uniform float uGamma;
+uniform vec4 uHeld; // xyz = held light position, w = emitted level (0 = none)
+varying vec3 vWorld;
 float curve(float x) {
   float c = x / (4.0 - 3.0 * x);
   return mix(c, x, uGamma);
 }
-vec3 voxelLight(vec3 l) {
+vec3 voxelLight(vec3 l, vec3 wp) {
+  l.y = max(l.y, max(0.0, uHeld.w - distance(wp, uHeld.xyz)) / 15.0);
   float sky = curve(l.x) * uDaylight;
   float blk = curve(l.y);
   vec3 c = max(uSkyLight * sky, vec3(1.0, 0.86, 0.66) * blk);
@@ -67,7 +72,7 @@ void main() {
   if (tex.a < 0.5) discard;
   vec3 base = tex.rgb;
   if (tex.a < 0.9) base *= vTint;
-  vec3 col = base * voxelLight(vLight);
+  vec3 col = base * voxelLight(vLight, vWorld);
   float fog = smoothstep(uFogNear, uFogFar, vFogDepth);
   gl_FragColor = vec4(mix(col, uFogColor, fog), 1.0);
 }
@@ -83,7 +88,7 @@ varying float vFogDepth;
 void main() {
   vec4 tex = texture2D(map, vUv);
   if (tex.a < 0.02) discard;
-  vec3 col = tex.rgb * vTint * voxelLight(vLight);
+  vec3 col = tex.rgb * vTint * voxelLight(vLight, vWorld);
   float fog = smoothstep(uFogNear, uFogFar, vFogDepth);
   gl_FragColor = vec4(mix(col, uFogColor, fog), mix(tex.a, 1.0, fog));
 }

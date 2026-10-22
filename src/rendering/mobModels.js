@@ -33,7 +33,15 @@ export function buildMobModel(def) {
   const parts = {};
   for (const [name, size, off, color, pivotTop] of def.model) {
     const mesh = new THREE.Mesh(partGeometry(size, color), material);
-    if (pivotTop) {
+    if (pivotTop === 'orbit') {
+      // Orbiting rods: a pivot on the creature's axis spins them around it.
+      const pivot = new THREE.Group();
+      pivot.position.set(0, off[1], 0);
+      mesh.position.set(off[0], 0, off[2]);
+      pivot.add(mesh);
+      body.add(pivot);
+      parts[name] = pivot;
+    } else if (pivotTop) {
       // Legs/arms swing from their top edge.
       const pivot = new THREE.Group();
       pivot.position.set(off[0], off[1] + size[1] / 2, off[2]);

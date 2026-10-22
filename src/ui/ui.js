@@ -48,5 +48,6 @@ export class UIManager {
     document.body.classList.toggle('left-handed', s.get('leftHanded'));
     this.hud.setCrosshair(s.get('crosshair'));
     this.hud.toggleDebug(s.get('showDebug'));
+    this.hud.toggleCoords(s.get('showCoords'));
   }
 }

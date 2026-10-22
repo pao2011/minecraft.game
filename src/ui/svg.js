@@ -7,6 +7,7 @@ export const ICONS = {
   sprint: wrap('<path d="M5 7l5 5-5 5"/><path d="M12 7l5 5-5 5"/>'),
   mine: wrap('<path d="M4 9c4-5 12-5 16 0"/><path d="M12 6v14"/>'),
   use: wrap('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5"/><path d="M12 12v9"/><path d="M12 12L4 7.5"/>'),
+  swap: wrap('<path d="M5 8h13M14 4l4 4-4 4"/><path d="M19 16H6M10 12l-4 4 4 4"/>'),
   inventory: wrap('<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>'),
   pause: wrap('<path d="M9 5v14"/><path d="M15 5v14"/>'),
   fly: wrap('<path d="M12 4c-4 3-6 7-6 12 3-1 5-3 6-6 1 3 3 5 6 6 0-5-2-9-6-12z"/>'),

@@ -2,6 +2,11 @@
 
 Honest list of what is missing, simplified or unverified.
 
+## Scope of "every item/mineral" (1.1)
+
+Added with original names and art: new minerals, both extra realms, mineshafts, offhand, coordinates, 11 mobs.
+**Not added:** potions/brewing, enchanting and anvils, redstone, maps, banners, dyes, music discs, elytra, trading/villagers, advancements, command blocks. The Nether/End analogues are simplified originals (no fortress mob spawners, no End cities); in Peaceful difficulty the Void Drake does not spawn. The new realm code was smoke-tested in headless Chromium (`tests/e2e/dims.js`) but not balanced through long play.
+
 ## Not verified
 
 - **No Android device or emulator was available.** The container has no hardware

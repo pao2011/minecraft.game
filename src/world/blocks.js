@@ -130,6 +130,35 @@ def(75, 'ladder', 'Ladder', { shape: 'ladder', solid: true, render: 'cutout', li
 def(76, 'crystal_block', 'Azure Crystal Block', { hardness: 1.5, tool: 'pickaxe', toolLevel: 1, emit: 6, sound: 'glass', category: 'decoration' });
 def(77, 'bookshelf', 'Bookshelf', { hardness: 1.5, tool: 'axe', sound: 'wood', tex: { side: T.bookshelf, end: T.oak_planks }, category: 'decoration' });
 
+// ---- Minerals, Cinder Realm and Void Isles blocks (ids are append-only) ----
+def(78, 'tidestone_ore', 'Tidestone Ore', { hardness: 3, tool: 'pickaxe', toolLevel: 2, drops: [{ item: 'tidestone', count: [4, 8] }], category: 'ores' });
+def(79, 'verdant_ore', 'Verdant Ore', { hardness: 3, tool: 'pickaxe', toolLevel: 3, drops: [{ item: 'verdant_gem' }], category: 'ores' });
+def(80, 'quartz_ore', 'Pale Quartz Ore', { hardness: 2.5, tool: 'pickaxe', toolLevel: 1, drops: [{ item: 'quartz' }], category: 'ores' });
+def(81, 'nether_gold_ore', 'Cinder Gold Ore', { hardness: 2.5, tool: 'pickaxe', toolLevel: 1, drops: [{ item: 'raw_gold', count: [2, 5] }], category: 'ores' });
+def(82, 'abyssal_ore', 'Abyssal Ore', { hardness: 8, tool: 'pickaxe', toolLevel: 4, drops: [{ item: 'abyssal_scrap' }], category: 'ores' });
+def(83, 'coal_block', 'Block of Coal', { hardness: 5, tool: 'pickaxe', toolLevel: 1, category: 'decoration' });
+def(84, 'copper_block', 'Block of Copper', { hardness: 3, tool: 'pickaxe', toolLevel: 2, sound: 'metal', category: 'decoration' });
+def(85, 'tidestone_block', 'Block of Tidestone', { hardness: 3, tool: 'pickaxe', toolLevel: 2, category: 'decoration' });
+def(86, 'verdant_block', 'Block of Verdant Gem', { hardness: 5, tool: 'pickaxe', toolLevel: 3, sound: 'glass', category: 'decoration' });
+def(87, 'ember_block', 'Block of Ember Dust', { hardness: 3, tool: 'pickaxe', toolLevel: 3, emit: 6, category: 'decoration' });
+def(88, 'starstone_block', 'Block of Starstone', { hardness: 5, tool: 'pickaxe', toolLevel: 3, sound: 'glass', category: 'decoration' });
+def(89, 'abyssal_block', 'Block of Abyssal Metal', { hardness: 30, tool: 'pickaxe', toolLevel: 4, sound: 'metal', category: 'decoration' });
+def(90, 'quartz_block', 'Block of Pale Quartz', { hardness: 0.8, tool: 'pickaxe', toolLevel: 1, category: 'building' });
+def(91, 'quartz_pillar', 'Quartz Pillar', { hardness: 0.8, tool: 'pickaxe', toolLevel: 1, tex: { side: T.quartz_pillar, end: T.quartz_block }, axis: true, category: 'building' });
+def(92, 'cinderrock', 'Cinderrock', { hardness: 0.8, tool: 'pickaxe', category: 'natural' });
+def(93, 'lumen_stone', 'Lumenstone', { hardness: 0.3, emit: 15, sound: 'glass', category: 'building' });
+def(94, 'magma_block', 'Magma Block', { hardness: 0.8, tool: 'pickaxe', emit: 4, tex: { all: T.magma }, category: 'natural' });
+def(95, 'cinder_bricks', 'Cinder Bricks', { hardness: 2, tool: 'pickaxe', toolLevel: 1, category: 'building' });
+def(96, 'obsidian', 'Obsidian', { hardness: 50, tool: 'pickaxe', toolLevel: 4, category: 'natural' });
+def(97, 'void_stone', 'Void Stone', { hardness: 3, tool: 'pickaxe', toolLevel: 1, category: 'natural' });
+def(98, 'end_frame', 'Void Gate Frame', { hardness: -1, tex: { top: T.frame_top, bottom: T.frame_side, side: T.frame_side }, category: 'functional' });
+def(99, 'nether_portal', 'Cinder Portal', { shape: 'portal', solid: false, render: 'translucent', lightOpacity: 0, emit: 11, hardness: -1, sound: 'glass', drops: [], creative: false, tex: { all: T.nether_portal } });
+def(100, 'end_portal', 'Void Gate', { shape: 'portal', solid: false, render: 'translucent', lightOpacity: 0, emit: 7, hardness: -1, sound: 'glass', drops: [], creative: false, tex: { all: T.end_portal } });
+def(101, 'cobweb', 'Cobweb', { shape: 'cross', solid: false, render: 'cutout', lightOpacity: 0, hardness: 4, tool: 'sword', sound: 'wool', drops: [{ item: 'string' }], category: 'plants' });
+def(102, 'potatoes', 'Potato Crop', { ...plant, shape: 'crop', crop: { item: 'potato', seed: 'potato', tiles: [T.potatoes_0, T.potatoes_1, T.potatoes_2, T.potatoes_3] }, creative: false, tex: { all: T.potatoes_3 } });
+def(103, 'void_crystal', 'Void Crystal', { hardness: 0.4, emit: 12, sound: 'glass', drops: [], category: 'decoration' });
+def(104, 'blast_charge', 'Blast Charge', { hardness: 0, sound: 'grass', tex: { side: T.tnt_side, end: T.tnt_top }, category: 'functional' });
+
 export const AIR = 0;
 
 /** Look-up tables for hot loops (mesher, lighting, physics). */

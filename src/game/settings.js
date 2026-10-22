@@ -38,6 +38,7 @@ export const SCHEMA = {
   musicVolume: num(0.4, 0, 1),
   muted: bool(false),
   showDebug: bool(false),
+  showCoords: bool(false),
   tutorialDone: bool(false),
   tutorialStep: num(0, 0, 100),
 };

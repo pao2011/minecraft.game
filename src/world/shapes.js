@@ -107,6 +107,10 @@ export function getBoxes(id, meta, nb, kind) {
       return [[0, 0, 0, 1, 0.9375, 1]];
     case 'ladder':
       return [sidePanel(meta & 3, 0.125)];
+    case 'portal':
+      // meta bit 0: plane runs along Z instead of X; bit 1: flat gate (End portal).
+      if (meta & 2) return [[0, 0, 0, 1, 0.75, 1]];
+      return [meta & 1 ? [0.375, 0, 0, 0.625, 1, 1] : [0, 0, 0.375, 1, 1, 0.625]];
     default:
       return SOLID[id] ? FULL : [];
   }

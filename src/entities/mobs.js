@@ -135,5 +135,164 @@ export const MOBS = {
   },
 };
 
-export const PASSIVE_TYPES = Object.keys(MOBS).filter((k) => !MOBS[k].hostile);
-export const HOSTILE_TYPES = Object.keys(MOBS).filter((k) => MOBS[k].hostile);
+// ---- Second wave: new overworld creatures, Cinder Realm and Void Isles inhabitants ----------
+const legs = (n, size, xs, zs, color, y = 0) => xs.flatMap((x, i) => zs.map((z, j) => [`leg${i * zs.length + j + n}`, size, [x, size[1] / 2 + y, z], color, true]));
+const eyes = (y, z, dx, size, color) => [['eyeL', [size, size, 0.02], [-dx, y, z], color], ['eyeR', [size, size, 0.02], [dx, y, z], color]];
+
+Object.assign(MOBS, {
+  hopper: {
+    name: 'Hopper', hostile: false, health: 3, speed: 2.4, width: 0.4, height: 0.55, sound: 'hopper', hops: true, hopInterval: 0.55, hopPower: 5.5,
+    drops: [['raw_hare', 0, 1], ['hare_pelt', 0, 1, 0.5]], biomes: ['plains', 'forest', 'snowy', 'taiga'],
+    model: [
+      ['body', [0.3, 0.28, 0.45], [0, 0.3, 0], [172, 140, 100]],
+      ['head', [0.24, 0.24, 0.24], [0, 0.5, -0.28], [182, 152, 112]],
+      ['earL', [0.06, 0.28, 0.05], [-0.07, 0.78, -0.28], [204, 180, 144]],
+      ['earR', [0.06, 0.28, 0.05], [0.07, 0.78, -0.28], [204, 180, 144]],
+      ['tail', [0.12, 0.12, 0.1], [0, 0.38, 0.27], [246, 242, 236]],
+      ...eyes(0.54, -0.405, 0.08, 0.05, [20, 20, 20]),
+      ['leg0', [0.08, 0.2, 0.22], [-0.12, 0.1, 0.16], [150, 120, 86], true],
+      ['leg1', [0.08, 0.2, 0.22], [0.12, 0.1, 0.16], [150, 120, 86], true],
+    ],
+  },
+  bat: {
+    name: 'Cave Bat', hostile: false, ambient: true, flying: true, health: 4, speed: 2.6, width: 0.35, height: 0.35, sound: 'bat', drops: [], biomes: [],
+    model: [
+      ['body', [0.22, 0.2, 0.3], [0, 0.2, 0], [62, 52, 72]],
+      ['head', [0.18, 0.16, 0.16], [0, 0.27, -0.2], [76, 64, 88]],
+      ['earL', [0.05, 0.1, 0.04], [-0.06, 0.4, -0.2], [90, 76, 104]],
+      ['earR', [0.05, 0.1, 0.04], [0.06, 0.4, -0.2], [90, 76, 104]],
+      ['wingL', [0.5, 0.04, 0.3], [-0.36, 0.24, 0], [46, 38, 58]],
+      ['wingR', [0.5, 0.04, 0.3], [0.36, 0.24, 0], [46, 38, 58]],
+      ...eyes(0.29, -0.285, 0.05, 0.04, [250, 80, 80]),
+    ],
+  },
+  prowler: {
+    name: 'Prowler', hostile: false, retaliates: true, health: 14, speed: 3.3, width: 0.6, height: 0.85, damage: 3, attackRange: 1.5, attackCooldown: 1, detect: 18, sound: 'prowler',
+    drops: [['bone', 0, 2]], biomes: ['taiga', 'forest', 'snowy'],
+    model: [
+      ['body', [0.4, 0.42, 0.8], [0, 0.6, 0.05], [156, 156, 164]],
+      ['chest', [0.42, 0.3, 0.3], [0, 0.55, -0.25], [226, 226, 232]],
+      ['head', [0.38, 0.36, 0.34], [0, 0.78, -0.55], [170, 170, 178]],
+      ['snout', [0.2, 0.16, 0.2], [0, 0.7, -0.78], [230, 226, 220]],
+      ['nose', [0.08, 0.06, 0.04], [0, 0.76, -0.9], [20, 20, 24]],
+      ['earL', [0.1, 0.14, 0.06], [-0.13, 1.02, -0.52], [130, 130, 138]],
+      ['earR', [0.1, 0.14, 0.06], [0.13, 1.02, -0.52], [130, 130, 138]],
+      ['tail', [0.1, 0.1, 0.45], [0, 0.78, 0.55], [150, 150, 158]],
+      ...eyes(0.82, -0.725, 0.1, 0.06, [240, 190, 60]),
+      ...legs(0, [0.14, 0.4, 0.14], [-0.14, 0.14], [-0.26, 0.38], [120, 120, 128]),
+    ],
+  },
+  blastling: {
+    name: 'Blastling', hostile: true, explodes: true, fuse: 1.4, blastRadius: 3.2, health: 16, speed: 2.5, width: 0.7, height: 1.35, attackRange: 2.8, detect: 22, sound: 'blastling',
+    drops: [['blast_powder', 0, 2]],
+    model: [
+      ['body', [0.7, 0.8, 0.7], [0, 0.78, 0], [88, 112, 72]],
+      ['band', [0.72, 0.14, 0.72], [0, 0.6, 0], [58, 78, 48]],
+      ['fuse', [0.1, 0.26, 0.1], [0, 1.31, 0], [232, 192, 92]],
+      ['spark', [0.14, 0.14, 0.14], [0, 1.48, 0], [255, 120, 40]],
+      ...eyes(0.98, -0.355, 0.16, 0.14, [20, 24, 16]),
+      ['mouth', [0.3, 0.1, 0.02], [0, 0.72, -0.355], [20, 24, 16]],
+      ...legs(0, [0.22, 0.38, 0.22], [-0.2, 0.2], [-0.2, 0.2], [66, 88, 54]),
+    ],
+  },
+  gloop: {
+    name: 'Gloop', hostile: true, hops: true, hopInterval: 0.8, hopPower: 6.5, health: 12, speed: 2.6, width: 0.8, height: 0.8, damage: 2, attackRange: 1.3, attackCooldown: 1, detect: 18, sound: 'gloop',
+    drops: [['clay_ball', 1, 3]],
+    model: [
+      ['body', [0.8, 0.7, 0.8], [0, 0.4, 0], [92, 192, 92]],
+      ['core', [0.4, 0.35, 0.4], [0, 0.4, 0], [60, 150, 70]],
+      ...eyes(0.5, -0.405, 0.2, 0.12, [16, 40, 20]),
+      ['mouth', [0.2, 0.06, 0.02], [0, 0.32, -0.405], [16, 40, 20]],
+    ],
+  },
+  emberling: {
+    name: 'Emberling', hostile: true, dimension: 'nether', flying: true, fireImmune: true, health: 20, speed: 2.6, width: 0.7, height: 1.2, damage: 3, attackRange: 22, attackCooldown: 2.6, keepDistance: 9, hover: 3, detect: 30, sound: 'emberling',
+    projectile: { kind: 'fireball', speed: 13, gravity: 0, damage: 3, radius: 0 },
+    drops: [['ember_rod', 0, 2]],
+    model: [
+      ['head', [0.5, 0.5, 0.5], [0, 0.85, 0], [236, 178, 60]],
+      ['face', [0.36, 0.16, 0.02], [0, 0.82, -0.255], [60, 28, 16]],
+      ...eyes(0.9, -0.255, 0.12, 0.08, [255, 250, 200]),
+      ['core', [0.3, 0.5, 0.3], [0, 0.4, 0], [214, 120, 40]],
+      ['orbitA0', [0.1, 0.5, 0.1], [0.5, 0.25, 0], [255, 214, 90], 'orbit'],
+      ['orbitA1', [0.1, 0.5, 0.1], [-0.5, 0.25, 0], [255, 214, 90], 'orbit'],
+      ['orbitA2', [0.1, 0.5, 0.1], [0, 0.55, 0.5], [255, 190, 70], 'orbit'],
+      ['orbitA3', [0.1, 0.5, 0.1], [0, 0.55, -0.5], [255, 190, 70], 'orbit'],
+    ],
+  },
+  cinderhound: {
+    name: 'Cinder Hound', hostile: true, dimension: 'nether', fireImmune: true, health: 18, speed: 4.3, width: 0.6, height: 0.85, damage: 4, attackRange: 1.6, attackCooldown: 0.9, detect: 26, sound: 'cinderhound',
+    drops: [['bone', 0, 1], ['quartz', 0, 2, 0.5]],
+    model: [
+      ['body', [0.42, 0.44, 0.82], [0, 0.6, 0.05], [74, 30, 34]],
+      ['mane', [0.44, 0.2, 0.4], [0, 0.88, -0.2], [214, 96, 36]],
+      ['head', [0.4, 0.38, 0.36], [0, 0.78, -0.56], [90, 36, 40]],
+      ['snout', [0.22, 0.16, 0.2], [0, 0.7, -0.8], [60, 24, 28]],
+      ['tail', [0.1, 0.1, 0.5], [0, 0.82, 0.58], [226, 110, 40]],
+      ['earL', [0.1, 0.14, 0.06], [-0.14, 1.04, -0.52], [60, 24, 28]],
+      ['earR', [0.1, 0.14, 0.06], [0.14, 1.04, -0.52], [60, 24, 28]],
+      ...eyes(0.84, -0.745, 0.1, 0.07, [255, 220, 80]),
+      ...legs(0, [0.14, 0.4, 0.14], [-0.14, 0.14], [-0.28, 0.4], [50, 20, 24]),
+    ],
+  },
+  magmaling: {
+    name: 'Magmaling', hostile: true, dimension: 'nether', hops: true, hopInterval: 0.9, hopPower: 7, fireImmune: true, health: 16, speed: 2.8, width: 0.9, height: 0.9, damage: 3, attackRange: 1.4, attackCooldown: 1, detect: 22, sound: 'magmaling',
+    drops: [['ember_dust', 0, 2], ['magma_block', 0, 1, 0.12]],
+    model: [
+      ['body', [0.9, 0.8, 0.9], [0, 0.45, 0], [96, 34, 28]],
+      ['crack1', [0.92, 0.1, 0.92], [0, 0.3, 0], [250, 130, 40]],
+      ['crack2', [0.92, 0.1, 0.92], [0, 0.62, 0], [250, 130, 40]],
+      ...eyes(0.5, -0.455, 0.22, 0.14, [255, 230, 120]),
+    ],
+  },
+  wisp: {
+    name: 'Wisp', hostile: true, dimension: 'nether', flying: true, fireImmune: true, health: 12, speed: 1.8, width: 2, height: 2, damage: 5, attackRange: 40, attackCooldown: 3.4, keepDistance: 16, hover: 6, detect: 44, sound: 'wisp',
+    projectile: { kind: 'fireball', speed: 11, gravity: 0, damage: 5, radius: 2 },
+    drops: [['wisp_tear', 0, 1], ['blast_powder', 0, 2]],
+    model: [
+      ['body', [1.8, 1.8, 1.8], [0, 1.0, 0], [238, 236, 232]],
+      ['face', [1.2, 0.3, 0.02], [0, 0.8, -0.905], [60, 56, 64]],
+      ...eyes(1.15, -0.905, 0.4, 0.24, [60, 56, 64]),
+      ...[-0.6, 0, 0.6].flatMap((x, i) => [-0.6, 0, 0.6].map((z, j) => [`leg${i * 3 + j}`, [0.2, 1, 0.2], [x, 0.1, z], [214, 212, 208], true])),
+    ],
+  },
+  voidstalker: {
+    name: 'Voidstalker', hostile: true, gaze: true, teleports: true, dimension: 'end', health: 40, speed: 3.4, width: 0.6, height: 2.9, damage: 6, attackRange: 1.8, attackCooldown: 1, detect: 40, sound: 'voidstalker',
+    drops: [['void_pearl', 0, 1, 0.75]],
+    model: [
+      ['legL', [0.18, 1.3, 0.18], [-0.12, 0.65, 0], [24, 20, 30], true],
+      ['legR', [0.18, 1.3, 0.18], [0.12, 0.65, 0], [24, 20, 30], true],
+      ['body', [0.5, 0.9, 0.26], [0, 1.75, 0], [30, 26, 38]],
+      ['armL', [0.14, 1.2, 0.14], [-0.34, 1.7, 0], [24, 20, 30], true],
+      ['armR', [0.14, 1.2, 0.14], [0.34, 1.7, 0], [24, 20, 30], true],
+      ['head', [0.44, 0.44, 0.44], [0, 2.45, 0], [30, 26, 38]],
+      ...eyes(2.47, -0.225, 0.11, 0.08, [200, 110, 255]),
+    ],
+  },
+  void_drake: {
+    name: 'Void Drake', hostile: true, boss: true, dimension: 'end', flying: true, noClip: true, fireImmune: true, health: 200, speed: 11, width: 3, height: 2, damage: 8, attackRange: 4.5, attackCooldown: 1.5, detect: 120, sound: 'drake',
+    projectile: { kind: 'fireball', speed: 16, gravity: 0, damage: 5, radius: 2.5 },
+    drops: [['drake_heart', 1, 1]],
+    model: [
+      ['body', [2.2, 1.1, 3.2], [0, 1.0, 0], [34, 28, 44]],
+      ['belly', [1.8, 0.2, 2.8], [0, 0.4, 0], [90, 60, 120]],
+      ['neck', [0.9, 0.9, 1.0], [0, 1.2, -1.9], [40, 32, 52]],
+      ['head', [1.1, 0.9, 1.3], [0, 1.35, -2.9], [46, 36, 60]],
+      ['jaw', [0.9, 0.25, 1.0], [0, 0.85, -3.0], [30, 24, 40]],
+      ...eyes(1.5, -3.56, 0.32, 0.2, [210, 90, 255]),
+      ['hornL', [0.14, 0.5, 0.14], [-0.35, 2.0, -2.5], [190, 170, 220]],
+      ['hornR', [0.14, 0.5, 0.14], [0.35, 2.0, -2.5], [190, 170, 220]],
+      ['wingL', [3.4, 0.14, 2.0], [-2.8, 1.5, 0.2], [58, 44, 78]],
+      ['wingR', [3.4, 0.14, 2.0], [2.8, 1.5, 0.2], [58, 44, 78]],
+      ['tail0', [0.8, 0.7, 1.4], [0, 0.95, 2.2], [40, 32, 52]],
+      ['tail1', [0.55, 0.5, 1.4], [0, 0.9, 3.4], [36, 28, 48]],
+      ['tail2', [0.3, 0.3, 1.2], [0, 0.85, 4.5], [30, 24, 42]],
+    ],
+  },
+});
+
+/** Overworld spawn pools; Nether and End inhabitants spawn only in their own dimension. */
+export const PASSIVE_TYPES = Object.keys(MOBS).filter((k) => !MOBS[k].hostile && !MOBS[k].ambient && !MOBS[k].retaliates);
+export const HOSTILE_TYPES = Object.keys(MOBS).filter((k) => MOBS[k].hostile && !MOBS[k].dimension);
+export const NETHER_TYPES = Object.keys(MOBS).filter((k) => MOBS[k].dimension === 'nether');
+export const END_TYPES = Object.keys(MOBS).filter((k) => MOBS[k].dimension === 'end' && !MOBS[k].boss);

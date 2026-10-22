@@ -319,6 +319,26 @@ export class App {
     }
   }
 
+  /** Loading screen while moving between realms; the game flips to 'playing' when the arrival is ready. */
+  beginTravel(title) {
+    this.state = 'loading';
+    this.input.releaseAll();
+    this.input.enabled = false;
+    this.input.exitPointerLock();
+    this.ui.inventory.close();
+    this.loadingEl = loadingScreen(title);
+    this.ui.setScreen(this.loadingEl);
+  }
+
+  /** Travel aborted (save failed): back to the game where we were. */
+  cancelTravel() {
+    this.ui.clearScreen();
+    this.loadingEl = null;
+    this.state = 'playing';
+    this.input.enabled = true;
+    this.input.requestPointerLock(this.canvas);
+  }
+
   enterPlaying() {
     this.ui.clearScreen();
     this.loadingEl = null;
@@ -424,7 +444,7 @@ export class App {
 
   respawn() {
     if (!this.game) return;
-    this.game.respawn();
+    if (this.game.respawn()) return; // changing realm: the travel loading screen takes over
     this.ui.clearScreen();
     this.state = 'playing';
     this.input.enabled = true;

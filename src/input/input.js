@@ -49,6 +49,7 @@ export class InputManager {
       </div>
       <div class="ttop">
         <button class="tbtn small t-inv" data-ctl="inventory" aria-label="Inventory">${ICONS.inventory}</button>
+        <button class="tbtn small t-swap" data-ctl="swap" aria-label="Swap hands">${ICONS.swap}</button>
         <button class="tbtn small t-pause" data-ctl="pause" aria-label="Pause">${ICONS.pause}</button>
       </div>`;
     this.root.appendChild(el);
@@ -124,6 +125,9 @@ export class InputManager {
         break;
       case 'inventory':
         this.edges.add('inventory');
+        break;
+      case 'swap':
+        this.edges.add('swap');
         break;
       case 'pause':
         this.edges.add('pause');
@@ -247,6 +251,8 @@ export class InputManager {
       }
       if (e.repeat) return;
       if (e.code === 'KeyE') this.edges.add('inventory');
+      else if (e.code === 'KeyX') this.edges.add('swap');
+      else if (e.code === 'KeyC') this.edges.add('coords');
       else if (e.code === 'Escape') this.edges.add('escape');
       else if (e.code === 'KeyQ') this.edges.add('drop');
       else if (e.code === 'F3') {

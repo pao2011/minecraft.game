@@ -1,5 +1,15 @@
 # Changelog and development log
 
+## 1.1.0 — 2026-10-22
+
+- **Minerals:** tidestone, verdant gem, quartz, abyssal ore (Nether-only) plus crystal/abyssal tool tiers, gold/crystal/abyssal armor.
+- **Realms:** the Cinder Realm (Nether-like: lava seas, cinderrock caves, keeps) and the Void Isles (End-like: floating islands, void crystals, Void Drake boss, exit portal). Obsidian-frame portals, 8:1 travel scale, per-realm saves (save format v3, v1/v2 saves migrate).
+- **Mineshafts** and Void sanctums (12-frame gate with void eyes).
+- **Second hand:** offhand slot (swap button / X), shields (block frontal hits while sneaking), held torches light the surroundings.
+- **Coordinates readout**, toggleable (settings, pause menu, C key).
+- **11 new mobs**, bow + arrows, fishing, flint & steel, explosives, ~80 new items and ~56 recipes.
+- Tests: 77 unit tests; new `tests/e2e/dims.js` realm-travel smoke test.
+
 ## 1.0.0 — 2026-10-22
 
 First complete build. Development log below, in the order work happened.

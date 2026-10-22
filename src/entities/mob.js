@@ -41,6 +41,10 @@ export class Mob {
     this.age = 0;
     this.leapTimer = 0;
     this.removed = false;
+    this.aggro = 0; // seconds of provoked behavior for neutral creatures
+    this.hopTimer = 0;
+    this.fuse = -1; // blastling countdown (-1 = idle)
+    this.tpTimer = 3 + Math.random() * 4;
   }
 
   setState(s, time = 0) {
@@ -79,7 +83,10 @@ export class Mob {
       this.deathTimer = 1;
       return true;
     }
-    if (!this.def.hostile) {
+    const def = this.def;
+    if (def.retaliates || def.gaze) this.aggro = def.gaze ? 45 : 20;
+    if (def.teleports && Math.random() < 0.6) this.wantTeleport = true;
+    if (!def.hostile && !def.retaliates) {
       this.setState('flee', 4);
       this.fleeFrom = from ? { ...from } : null;
     } else if (this.state !== 'attack') this.setState('chase', 0);
@@ -106,7 +113,7 @@ export class Mob {
     const touching = touchingBlocks(world, this);
     this.inWater = touching.some((t) => t.id === B.water);
     const inLava = touching.some((t) => t.id === B.lava);
-    if (inLava) this.hurtEnv(4, dt, ctx);
+    if (inLava && !this.def.fireImmune) this.hurtEnv(4, dt, ctx);
     if (touching.some((t) => t.id === B.cactus)) this.hurtEnv(1, dt, ctx);
 
     // Daylight burns some undead-like creatures when under open sky.
@@ -136,11 +143,58 @@ export class Mob {
     this.leapTimer -= dt;
     this.pathTimer -= dt;
 
-    if (this.def.hostile) move = this.hostileBrain(dt, ctx, dPlayer);
+    const def = this.def;
+    this.hopTimer -= dt;
+    // Neutral creatures calm down; endermen-like ones turn hostile when stared at.
+    const wasAggro = this.aggro > 0;
+    if (this.aggro > 0) this.aggro -= dt;
+    if (def.gaze && !wasAggro && ctx.playerTargetable && dPlayer < 32) {
+      const look = player.lookDir();
+      const dx = this.pos.x - player.pos.x, dy = this.pos.y + this.height * 0.9 - player.eye.y, dz = this.pos.z - player.pos.z;
+      const l = Math.hypot(dx, dy, dz) || 1;
+      if ((look.x * dx + look.y * dy + look.z * dz) / l > 0.985 && this.canSeeCached(world, player, dt)) {
+        this.aggro = 45;
+        this.setState('chase', 0);
+        ctx.events.push({ type: 'sound', mob: this, name: 'attack' });
+      }
+    }
+    if (wasAggro && this.aggro <= 0 && !def.hostile) this.setState('idle', 2);
+    if (def.teleports) {
+      this.tpTimer -= dt;
+      if (this.wantTeleport || (this.aggro > 0 && this.tpTimer <= 0 && Math.random() < 0.02)) {
+        this.wantTeleport = false;
+        this.tpTimer = 3 + Math.random() * 4;
+        this.teleport(world, this.aggro > 0 ? player.pos : this.pos, this.aggro > 0 ? 7 : 14, ctx);
+      }
+    }
+    // Blastling fuse: stand still and swell, cancel if the target backs off.
+    if (this.fuse >= 0) {
+      this.fuse -= dt;
+      if (dPlayer > def.attackRange + 2.5 && this.fuse > 0.3) this.fuse = -1;
+      else if (this.fuse <= 0) {
+        ctx.events.push({ type: 'explode', mob: this, radius: def.blastRadius });
+        this.dead = true;
+        this.removed = true;
+        return;
+      }
+    }
+
+    const aggressive = (def.hostile && !def.gaze) || this.aggro > 0;
+    if (def.boss) move = this.bossBrain(dt, ctx, dPlayer);
+    else if (def.flying) move = this.flyBrain(dt, ctx, dPlayer, aggressive);
+    else if (this.fuse >= 0) {
+      this.yaw = Math.atan2(-(player.pos.x - this.pos.x), -(player.pos.z - this.pos.z));
+      move = null;
+    } else if (aggressive) move = this.hostileBrain(dt, ctx, dPlayer);
     else move = this.passiveBrain(dt, ctx, dPlayer);
 
     // Steering and locomotion.
-    const speed = this.def.speed * (move?.speedMul ?? 1) * (this.inWater ? 0.6 : 1);
+    const hopMul = def.hops ? (this.onGround ? 0.1 : 1.25) : 1;
+    const speed = def.speed * (move?.speedMul ?? 1) * (this.inWater ? 0.6 : 1) * hopMul;
+    if (def.hops && move && this.onGround && this.hopTimer <= 0) {
+      this.vel.y = def.hopPower || 6;
+      this.hopTimer = def.hopInterval || 0.6;
+    }
     if (move) {
       const dx = move.x - this.pos.x, dz = move.z - this.pos.z;
       const d = Math.hypot(dx, dz);
@@ -155,7 +209,12 @@ export class Mob {
       } else this.brake(dt);
     } else this.brake(dt);
 
-    if (this.inWater) {
+    if (def.flying) {
+      // Fliers steer vertically toward the brain's target height and ignore gravity.
+      const ty = move?.y ?? this.pos.y;
+      const vyT = Math.max(-speed, Math.min(speed, (ty - this.pos.y) * 2));
+      this.vel.y += (vyT - this.vel.y) * (1 - Math.exp(-6 * dt));
+    } else if (this.inWater) {
       this.vel.y += (this.pos.y % 1 > 0.3 ? 4 : 12) * dt;
       this.vel.y = Math.min(this.vel.y, 2.5);
       this.vel.y -= 6 * dt;
@@ -164,8 +223,12 @@ export class Mob {
       if (this.def.slowFall && this.vel.y < -2.5) this.vel.y = -2.5;
     }
     const wasBlocked = this.hitHorizontal;
-    moveEntity(world, this, dt, { stepHeight: 0.6 });
-    if (move && this.onGround && (this.hitHorizontal || wasBlocked)) {
+    if (def.noClip) {
+      this.pos.x += this.vel.x * dt;
+      this.pos.y += this.vel.y * dt;
+      this.pos.z += this.vel.z * dt;
+    } else moveEntity(world, this, dt, { stepHeight: def.flying ? 0 : 0.6 });
+    if (move && !def.flying && this.onGround && (this.hitHorizontal || wasBlocked)) {
       // Jump up one-block steps when there is headroom.
       const fx = Math.floor(this.pos.x - Math.sin(this.yaw) * (this.width / 2 + 0.4));
       const fz = Math.floor(this.pos.z - Math.cos(this.yaw) * (this.width / 2 + 0.4));
@@ -174,6 +237,106 @@ export class Mob {
       else if (this.state === 'wander') this.setState('idle', 1 + Math.random() * 2);
     }
     this.headYaw += (this.yaw - this.headYaw) * Math.min(1, dt * 6);
+  }
+
+  /** Pick a free standing cell within `radius` of (center.x, center.z); null if none found. */
+  pickGoalAround(world, center, radius, tries = 10) {
+    for (let i = 0; i < tries; i++) {
+      const x = Math.floor(center.x + (Math.random() * 2 - 1) * radius);
+      const z = Math.floor(center.z + (Math.random() * 2 - 1) * radius);
+      for (let dy = 4; dy >= -6; dy--) {
+        const y = Math.floor(center.y) + dy;
+        if (walkable(world, x, y, z, Math.ceil(this.height)) && world.getBlock(x, y - 1, z) !== B.water) return { x: x + 0.5, y, z: z + 0.5 };
+      }
+    }
+    return null;
+  }
+
+  teleport(world, center, radius, ctx) {
+    const g = this.pickGoalAround(world, center, radius);
+    if (!g) return;
+    ctx.events.push({ type: 'teleport', mob: this, from: { ...this.pos }, to: g });
+    this.pos.x = g.x;
+    this.pos.y = g.y;
+    this.pos.z = g.z;
+    this.vel.x = this.vel.y = this.vel.z = 0;
+    this.path = null;
+  }
+
+  /** Flying creatures steer in 3D: bats drift, shooters keep their distance and hover above the player. */
+  flyBrain(dt, ctx, dPlayer, aggressive) {
+    const { world, player } = ctx;
+    const def = this.def;
+    const free = (x, y, z) => !SOLID[world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))];
+    if (aggressive && ctx.playerTargetable && dPlayer < def.detect) {
+      const sees = this.canSeeCached(world, player, dt);
+      this.yaw = Math.atan2(-(player.pos.x - this.pos.x), -(player.pos.z - this.pos.z));
+      if (sees && dPlayer < def.attackRange && this.attackTimer <= 0) {
+        this.attackTimer = def.attackCooldown * (0.8 + Math.random() * 0.4);
+        ctx.events.push({ type: 'shoot', mob: this });
+      }
+      const dx = player.pos.x - this.pos.x, dz = player.pos.z - this.pos.z;
+      const l = Math.hypot(dx, dz) || 1;
+      const keep = def.keepDistance || 8;
+      let tx = this.pos.x, tz = this.pos.z;
+      if (dPlayer > keep + 2) { tx += (dx / l) * 4; tz += (dz / l) * 4; }
+      else if (dPlayer < keep - 2) { tx -= (dx / l) * 4; tz -= (dz / l) * 4; }
+      else { tx += (-dz / l) * 3; tz += (dx / l) * 3; } // strafe around the player
+      return { x: tx, z: tz, y: player.pos.y + (def.hover || 3), speedMul: 1 };
+    }
+    // Idle drift: pick a nearby open point and fly there.
+    if (!this.goal || this.stateTime <= 0 || Math.hypot(this.goal.x - this.pos.x, this.goal.z - this.pos.z) < 0.8 || this.hitHorizontal) {
+      this.stateTime = 3 + Math.random() * 4;
+      this.goal = null;
+      for (let i = 0; i < 6; i++) {
+        const x = this.pos.x + (Math.random() * 2 - 1) * 7, y = this.pos.y + (Math.random() * 2 - 1) * 2.5, z = this.pos.z + (Math.random() * 2 - 1) * 7;
+        if (free(x, y, z) && free(x, y + 1, z)) {
+          this.goal = { x, y, z };
+          break;
+        }
+      }
+    }
+    if (!this.goal) return null;
+    return { x: this.goal.x, z: this.goal.z, y: this.goal.y, speedMul: 0.7 };
+  }
+
+  /** Void Drake: circles the island, breathes fire, and dives at the player. */
+  bossBrain(dt, ctx, dPlayer) {
+    const { player } = ctx;
+    const def = this.def;
+    if (!this.phase) {
+      this.phase = 'circle';
+      this.phaseT = 9;
+      this.angle = Math.random() * 6;
+    }
+    this.phaseT -= dt;
+    const targetable = ctx.playerTargetable;
+    if (this.phase === 'circle' || !targetable) {
+      this.angle += dt * 0.35;
+      if (targetable && dPlayer < 70 && this.attackTimer <= 0) {
+        this.attackTimer = def.attackCooldown * 2.4;
+        ctx.events.push({ type: 'shoot', mob: this });
+      }
+      if (targetable && this.phaseT <= 0) {
+        this.phase = 'dive';
+        this.phaseT = 4.5;
+      }
+      const tx = Math.cos(this.angle) * 30, tz = Math.sin(this.angle) * 30;
+      this.yaw = Math.atan2(-(tx - this.pos.x), -(tz - this.pos.z));
+      return { x: tx, z: tz, y: 84 + Math.sin(this.angle * 2) * 5, speedMul: 1 };
+    }
+    // Dive: charge at the player's position, bite when close, then climb back out.
+    this.yaw = Math.atan2(-(player.pos.x - this.pos.x), -(player.pos.z - this.pos.z));
+    if (dPlayer < def.attackRange && this.attackTimer <= 0) {
+      this.attackTimer = 1.2;
+      ctx.events.push({ type: 'melee', mob: this });
+      this.phase = 'circle';
+      this.phaseT = 8 + Math.random() * 5;
+    } else if (this.phaseT <= 0) {
+      this.phase = 'circle';
+      this.phaseT = 8 + Math.random() * 5;
+    }
+    return { x: player.pos.x, z: player.pos.z, y: player.pos.y + 1, speedMul: 1.3 };
   }
 
   hurtEnv(amount, dt, ctx) {
@@ -303,7 +466,15 @@ export class Mob {
           if (dPlayer > def.keepDistance + 2) return this.pathTo(world, player.pos, 1);
           return null;
         }
-        if (dPlayer <= def.attackRange) {
+        if (def.explodes) {
+          if (dPlayer <= def.attackRange) {
+            if (this.fuse < 0) {
+              this.fuse = def.fuse;
+              ctx.events.push({ type: 'fuse', mob: this });
+            }
+            return null;
+          }
+        } else if (dPlayer <= def.attackRange) {
           this.state = 'attack';
           this.yaw = Math.atan2(-(player.pos.x - this.pos.x), -(player.pos.z - this.pos.z));
           if (this.attackTimer <= 0 && Math.abs(player.pos.y - this.pos.y) < 1.8) {

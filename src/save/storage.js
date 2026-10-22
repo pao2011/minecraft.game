@@ -17,7 +17,8 @@ const done = (tx) => new Promise((resolve, reject) => {
   tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
 });
 
-const ckey = (worldId, cx, cz) => `${worldId}/${cx},${cz}`;
+// Overworld keys keep the original format; other dimensions get a `dim:` prefix.
+const ckey = (worldId, cx, cz, dim = 'overworld') => (dim === 'overworld' ? `${worldId}/${cx},${cz}` : `${worldId}/${dim}:${cx},${cz}`);
 
 export class Storage {
   constructor() {
@@ -62,30 +63,36 @@ export class Storage {
   async saveWorld(record, chunks = []) {
     if (this.memory) {
       this.memory.worlds.set(record.id, structuredClone(record));
-      for (const c of chunks) this.memory.chunks.set(ckey(record.id, c.cx, c.cz), structuredClone(c.data));
+      for (const c of chunks) this.memory.chunks.set(ckey(record.id, c.cx, c.cz, c.dim), structuredClone(c.data));
       return;
     }
     const tx = this.db.transaction(['worlds', 'chunks'], 'readwrite');
     tx.objectStore('worlds').put(record);
     const cs = tx.objectStore('chunks');
-    for (const c of chunks) cs.put(c.data, ckey(record.id, c.cx, c.cz));
+    for (const c of chunks) cs.put(c.data, ckey(record.id, c.cx, c.cz, c.dim));
     await done(tx);
   }
 
-  async loadChunk(worldId, cx, cz) {
-    if (this.memory) return structuredClone(this.memory.chunks.get(ckey(worldId, cx, cz)) ?? null);
+  async loadChunk(worldId, cx, cz, dim = 'overworld') {
+    if (this.memory) return structuredClone(this.memory.chunks.get(ckey(worldId, cx, cz, dim)) ?? null);
     const tx = this.db.transaction('chunks', 'readonly');
-    return (await req(tx.objectStore('chunks').get(ckey(worldId, cx, cz)))) ?? null;
+    return (await req(tx.objectStore('chunks').get(ckey(worldId, cx, cz, dim)))) ?? null;
   }
 
-  /** Numeric chunk keys of every saved chunk in a world. */
-  async savedChunkKeys(worldId) {
+  /** Numeric chunk keys of every saved chunk of one dimension of a world. */
+  async savedChunkKeys(worldId, dim = 'overworld') {
     const keys = this.memory
       ? [...this.memory.chunks.keys()].filter((k) => k.startsWith(`${worldId}/`))
       : await req(this.db.transaction('chunks', 'readonly').objectStore('chunks').getAllKeys(IDBKeyRange.bound(`${worldId}/`, `${worldId}/￿`)));
     const out = new Set();
+    const prefix = dim === 'overworld' ? '' : `${dim}:`;
     for (const k of keys) {
-      const [cx, cz] = k.slice(worldId.length + 1).split(',').map(Number);
+      let rest = k.slice(worldId.length + 1);
+      if (prefix) {
+        if (!rest.startsWith(prefix)) continue;
+        rest = rest.slice(prefix.length);
+      }
+      const [cx, cz] = rest.split(',').map(Number);
       if (Number.isInteger(cx) && Number.isInteger(cz)) out.add(chunkKey(cx, cz));
     }
     return out;
