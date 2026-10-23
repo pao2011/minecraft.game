@@ -57,3 +57,23 @@ test('blossom trees and wood work like other woods', () => {
   assert.ok(ids.includes(B.cherry_log) && ids.filter((i) => i === B.cherry_leaves).length > 20);
   void gen;
 });
+
+test('a save requested while another is in flight waits for it instead of failing', async () => {
+  const { Game } = await import('../../src/game/game.js');
+  let release;
+  const stored = [];
+  const game = Object.create(Game.prototype);
+  Object.assign(game, {
+    ready: true, saving: false, stats: {}, dim: 'overworld', savedKeys: new Set(), world: { chunks: new Map(), unloadedModified: new Map() },
+    app: { ui: { hud: { setSaving() {} }, toast() {} } },
+    storage: { saveWorld: (rec) => new Promise((r) => { stored.push(rec); if (stored.length === 1) release = r; else r(); }) },
+    snapshotRecord: () => ({}),
+  });
+  const first = game.save('respawn');
+  assert.equal(await game.save('autosave'), false, 'autosave skips while busy');
+  const quit = game.save('quit');
+  release();
+  assert.equal(await first, true);
+  assert.equal(await quit, true, 'quit save waited and succeeded');
+  assert.equal(stored.length, 2);
+});

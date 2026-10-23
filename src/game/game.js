@@ -1059,8 +1059,14 @@ export class Game {
 
   /** Save the world. Returns true on success; failures keep the previous save intact. */
   async save(reason = 'manual', { thumbnail = null } = {}) {
-    if (this.saving || !this.ready) return false;
+    if (!this.ready) return false;
+    // A save already in flight (autosave, respawn) must not make quit/pause saves fail: wait, then save again.
+    while (this.saving) {
+      if (reason === 'autosave') return false;
+      await this.saveDone;
+    }
     this.saving = true;
+    this.saveDone = new Promise((resolve) => { this.endSave = resolve; });
     const t0 = performance.now();
     const chunks = [];
     const savedChunkObjs = [];
@@ -1091,6 +1097,7 @@ export class Game {
       return false;
     } finally {
       this.saving = false;
+      this.endSave();
       this.app.ui.hud.setSaving(false);
     }
   }
