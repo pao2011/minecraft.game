@@ -331,3 +331,5 @@ details.adv summary { cursor: pointer; padding: 8px 0; color: var(--muted); font
 .hslot.sel { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 0 14px rgba(255, 255, 255, 0.35); animation: sel-pulse 2.4s ease-in-out infinite; }
 @keyframes sel-pulse { 50% { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 20px rgba(255, 235, 170, 0.55); } }
 @media (prefers-reduced-motion: reduce) { .hslot.sel, .zone-title.on { animation: none; } .zone-title.on { opacity: 1; } }
+/* Ten hotbar slots (offhand + nine) must clear the joystick and action buttons on small phones. */
+@media (max-width: 800px) { .hslot { width: calc(var(--slot) * var(--hud) * 0.76); height: calc(var(--slot) * var(--hud) * 0.76); } .hotbar { gap: 2px; padding: 2px; } }

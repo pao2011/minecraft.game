@@ -1,7 +1,7 @@
 # Testing
 
 Two layers of automated tests plus visual review tools. Results below are from the final
-run on 2026-10-22 in the development container (headless Chromium 141 via Playwright 1.56,
+run on 2026-10-23 in the development container (headless Chromium 141 via Playwright 1.56,
 SwiftShader software WebGL, 4 server CPU cores).
 
 ## How to run
@@ -18,7 +18,7 @@ node scripts/atlas-preview.js         # writes build/atlas.png of every block te
 
 Artifacts land in `test-results/` (screenshots, `e2e-report.json`, `perf.json`).
 
-## Unit tests — 66 passed, 0 failed
+## Unit tests — 82 passed, 0 failed
 
 | File | Covers |
 |---|---|
@@ -27,6 +27,8 @@ Artifacts land in `test-results/` (screenshots, `e2e-report.json`, `perf.json`).
 | `physics.test.js` | landing on ground, walls, step-up onto slabs (not full blocks), sneak edge guard, never ending inside blocks at high speed, raycast face/placement cell, reach limit, negative coordinates, partial-shape hits |
 | `items.test.js` | stack merging, full-inventory leftovers, tools not stacking, tap/half/one/merge/swap, quick move, inventory JSON repair, tag recipes (any planks), crafting without ingredients consumes nothing, output-does-not-fit is transactional, station filtering, furnace fuel/smelting, tool tiers/speeds/harvest levels, drop rules (gravel/flint, crops), loot tables |
 | `save.test.js` | RLE round-trip and corruption detection, generated chunk compression, palette remapping, record validation/repair, rejection of unusable/newer saves, v1→v2 migration, new-record completeness |
+| `dimensions.test.js` | Nether/End generation, portals, gates, structures, explosions, offhand/shield rules, mob voices and item icons |
+| `effects.test.js` | biome table indexed by id, particle pool capacity/expiry/compaction, ambient emitters finding torches and emitting flames, blossom trees, save queuing behind an in-flight save |
 | `gameplay.test.js` | damage invulnerability window, armor reduction/wear, fall damage bypassing armor, creative immunity, eating rules, regeneration needs food, death reported once, drowning, ladder climbing, swimming, fall damage thresholds, sapling growth, crop random ticks, A\* around walls, hostile chase/attack, passive flee, daylight burning |
 
 ## End-to-end scenarios — 19 passed, 0 failed (production build)
@@ -94,3 +96,10 @@ several issues (see CHANGELOG.md).
 - Keyboard + mouse pointer-lock flow (headless Chromium does not grant pointer lock reliably);
   keyboard handling is shared code exercised through the same input snapshot.
 - Listening tests for audio.
+
+
+## Visual effects checks (1.2)
+
+- E2E scenarios run with *Visual effects: Off* so frame-time probes stay comparable (software rendering makes bloom roughly 3× slower, which is not representative of a phone GPU). `node tests/e2e/dims.js` runs a creative world through the effect modes (off / standard / ultra, each frame must be a non-blank screenshot) and through Overworld → Nether → End → Overworld without page errors.
+- Screenshots of the new looks (night camp with torches/lava, sunset light shafts, reflective water, aurora, lightning, Blossom Grove, Nether, End) were reviewed by eye; the throwaway driver lives outside the repo.
+- Found by the E2E persistence scenario: quitting while a save was in flight showed a bogus "Save failed" dialog. Fixed in `Game.save` (saves queue) and covered by a unit test.
