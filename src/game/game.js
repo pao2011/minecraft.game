@@ -1,5 +1,6 @@
 // One playable world session: owns the World, player, creatures, timing, saving and the
 // per-frame update order. UI and rendering are borrowed from the App.
+import { AmbientFx } from './ambientFx.js';
 import { World } from '../world/world.js';
 import { ChunkStreamer } from '../world/streamer.js';
 import { createPad, meshSection } from '../world/mesher.js';
@@ -25,6 +26,18 @@ import { TILE } from '../world/tiles.js';
 import { findPortalNear, findSite, buildPortal } from './portals.js';
 
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+// Per-biome haze applied to the distance fog: tint, strength, and how much it pulls the fog in.
+const BIOME_FOG = {
+  swamp: { tint: [0.46, 0.6, 0.4], mix: 0.5, near: 0.7, far: 0.3 },
+  desert: { tint: [0.96, 0.8, 0.55], mix: 0.28, near: 0.2, far: 0.05 },
+  rocky: { tint: [0.9, 0.62, 0.42], mix: 0.3, near: 0.25, far: 0.08 },
+  snowy: { tint: [0.86, 0.92, 1], mix: 0.38, near: 0.35, far: 0.1 },
+  taiga: { tint: [0.72, 0.82, 0.88], mix: 0.25, near: 0.3, far: 0.08 },
+  dense_forest: { tint: [0.42, 0.58, 0.45], mix: 0.25, near: 0.3, far: 0.1 },
+  cherry: { tint: [1, 0.78, 0.86], mix: 0.3, near: 0.2, far: 0.05 },
+};
+const NO_FOG = { tint: [1, 1, 1], mix: 0, near: 0, far: 0 };
+
 const lightOf = (stack) => {
   const it = stack && ITEMS[stack.id];
   return it?.kind === 'block' ? BLOCKS[it.block].emit : 0;
@@ -42,6 +55,7 @@ export class Game {
     this.storage = app.storage;
     this.record = record;
     this.pad = createPad();
+    this.ambient = new AmbientFx(this);
     this.meshQueue = new Set();
     this.saving = false;
     this.autosaveTimer = AUTOSAVE_SECONDS;
@@ -49,6 +63,10 @@ export class Game {
     this.playTimeAcc = 0;
     this.rain = record.weather.state === 'rain' ? 1 : 0;
     this.cameraShake = 0;
+    this.thunderTimer = 8;
+    this.fogNow = { ...NO_FOG, tint: [1, 1, 1] };
+    this.zone = { key: null, cand: null, t: 0 };
+    this.fxState = { hurt: 0, under: 0, speed: 0, roll: 0, dip: 0, portal: 0, flash: 0, fov: 0 };
     this.renderDistance = this.settings.get('renderDistance');
     this.frameStats = { samples: [], window: 0, slowWindows: 0, fastWindows: 0, lastAdjust: 0 };
     this.heightCache = new Map();
@@ -107,6 +125,7 @@ export class Game {
     }
     this.pendingEntities = rec.entities;
     this.renderer.clearChunks();
+    this.ambient.reset();
     this.setupWarnings = rec.warnings || [];
   }
 
@@ -376,6 +395,11 @@ export class Game {
     const biome = BIOMES[this.world.generator.column(Math.floor(p.pos.x), Math.floor(p.pos.z)).biome];
     this.currentBiome = biome;
     const precip = this.dim !== 'overworld' || biome.weather === 'none' ? null : biome.weather === 'snow' || (biome.key === 'mountains' && p.pos.y > 95) ? 'snow' : 'rain';
+    // Fog haze eases toward the current biome's so crossing a border never pops.
+    const ft = BIOME_FOG[biome.key] || NO_FOG, fn = this.fogNow, fk = Math.min(1, dt * 0.6);
+    for (let i = 0; i < 3; i++) fn.tint[i] += (ft.tint[i] - fn.tint[i]) * fk;
+    for (const k of ['mix', 'near', 'far']) fn[k] += (ft[k] - fn[k]) * fk;
+    this.updateZoneTitle(dt, biome);
     const env = this.renderer.setEnvironment({
       timeOfDay: rec.time.tod,
       rain: precip ? this.rain : this.rain * 0.4,
@@ -384,6 +408,8 @@ export class Game {
       renderDistance: this.renderDistance,
       brightness: this.settings.get('brightness'),
       dimension: this.dim,
+      fog: this.fogNow,
+      cold: biome.key === 'snowy' || biome.key === 'taiga' || biome.key === 'mountains' ? 1 : 0,
     });
     this.heightCacheTime += dt;
     if (this.heightCacheTime > 1) {
@@ -393,6 +419,11 @@ export class Game {
     if (dt > 0) {
       this.renderer.updateWeather(dt, eye, precip, this.rain, (x, z) => this.precipitationFloor(x, z));
       this.renderer.updateParticles(dt, this.world);
+      const night = this.dim === 'overworld' ? 1 - this.renderer.dayFactor : 0;
+      if (this.dim === 'overworld' && precip === 'rain' && this.rain > 0.85 && (this.thunderTimer -= dt) <= 0) this.lightning();
+      this.ambient.waterEffects(dt, p);
+      this.ambient.update(dt, { eye, nightness: night, biome, rain: this.rain, precip, underwater, dim: this.dim, heightAt: (x, z) => this.precipitationFloor(x, z) });
+      if (p.sprinting && p.onGround && Math.hypot(p.vel.x, p.vel.z) > 4 && Math.random() < dt * 14) this.ambient.footDust(p.pos.x, p.pos.y, p.pos.z, this.blockBrightness(Math.floor(p.pos.x), Math.floor(p.pos.y), Math.floor(p.pos.z)), 1);
     }
     // Ambient audio: open sky gives wind, enclosed dark spaces underground give cave tone.
     const [sky] = this.world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
@@ -476,7 +507,14 @@ export class Game {
       fs.slowWindows = 0;
     } else fs.slowWindows = fs.fastWindows = 0;
     if (now - fs.lastAdjust < 12000) return;
-    if (fs.slowWindows >= 2 && this.renderDistance > 2) {
+    // Cosmetic effects go first (their cost is per pixel), then render distance shrinks.
+    const post = this.renderer.post;
+    if (fs.slowWindows >= 2 && post.enabled) {
+      this.renderer.setEffects(post.mode === 'ultra' ? 'standard' : 'off');
+      fs.lastAdjust = now;
+      fs.slowWindows = 0;
+      log.info(`Adaptive quality: effects -> ${post.mode}`);
+    } else if (fs.slowWindows >= 2 && this.renderDistance > 2) {
       this.setRenderDistance(this.renderDistance - 1);
       fs.lastAdjust = now;
       fs.slowWindows = 0;
@@ -499,12 +537,59 @@ export class Game {
       if (!this.settings.get('reducedMotion')) pitch += Math.sin(this.cameraShake * 50) * this.cameraShake * 0.06;
     }
     const walking = p.onGround && !p.flying ? Math.min(1, Math.hypot(p.vel.x, p.vel.z) / 4.3) : 0;
+    const fx = this.fxState;
+    const calm = this.settings.get('reducedMotion');
+    const k = Math.min(1, dt * 8);
+    const moving = Math.hypot(p.vel.x, p.vel.z) > 4.5;
+    fx.hurt = Math.max(0, fx.hurt - dt * 2.2);
+    fx.dip = Math.max(0, fx.dip - dt * 1.4);
+    fx.under += ((p.headInWater ? 1 : 0) - fx.under) * k;
+    fx.speed += ((p.sprinting && moving && !calm ? 1 : 0) - fx.speed) * Math.min(1, dt * 4);
+    const side = p.vel.x * Math.cos(yaw) - p.vel.z * Math.sin(yaw);
+    fx.roll += ((calm ? 0 : Math.max(-0.035, Math.min(0.035, -side * 0.004))) - fx.roll) * Math.min(1, dt * 6);
+    const lowHp = p.health > 0 && p.health <= 6 && !this.creative ? (1 - p.health / 6) * 0.3 * (0.6 + 0.4 * Math.sin(this.renderer.time * 5)) : 0;
+    fx.flash = Math.max(0, fx.flash - dt * 2.5);
+    this.renderer.setScreenFx({ damage: Math.min(1, fx.hurt * 0.8 + lowHp), under: fx.under, portal: fx.portal, flash: fx.flash, speed: fx.speed });
+    this.renderer.setFovKick(fx.speed * 7 * (calm ? 0 : 1));
     const bob = this.settings.get('reducedMotion') ? 0 : walking;
     const [sky, blk] = this.world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
     this.renderer.setHandBrightness(this.renderer.lightLevelToBrightness(sky, blk));
     // A held torch (either hand) lights the surroundings.
     this.renderer.setHeldLight(eye.x, eye.y, eye.z, Math.max(lightOf(p.heldStack), lightOf(p.offhand.get(0))));
-    this.renderer.render({ x: eye.x, y: eye.y, z: eye.z, yaw, pitch }, dt, { showHand: !p.dead && this.app.ui.handVisible, walking: bob });
+    this.updateShadows();
+    if (!p.dead && this.app.ui.handVisible && (ITEMS[p.heldStack?.id]?.block === B.torch || ITEMS[p.offhand.get(0)?.id]?.block === B.torch)) this.ambient.heldFlame(dt, eye, yaw, pitch);
+    this.renderer.render({ x: eye.x, y: eye.y - fx.dip * (calm ? 0 : 1), z: eye.z, yaw, pitch, roll: fx.roll }, dt, { showHand: !p.dead && this.app.ui.handVisible, walking: bob });
+  }
+
+  /** Ground y under a point (first solid block within 6 below), or null. */
+  groundBelow(x, y, z) {
+    const bx = Math.floor(x), bz = Math.floor(z);
+    for (let yy = Math.floor(y); yy > Math.floor(y) - 7 && yy > 0; yy--) if (SOLID[this.world.getBlock(bx, yy, bz)]) return yy + 1;
+    return null;
+  }
+
+  updateShadows() {
+    const p = this.player;
+    const list = [];
+    const add = (x, y, z, r, a) => {
+      const g = this.groundBelow(x, y, z);
+      if (g === null) return;
+      const h = Math.max(0, y - g);
+      list.push({ x, y: g, z, r: r * (1 + h * 0.08), a: a * Math.max(0, 1 - h / 5) });
+    };
+    if (!p.dead && !p.flying) add(p.pos.x, p.pos.y + 0.05, p.pos.z, 0.45, 0.7);
+    for (const m of this.entities.mobs) {
+      if (m.dead || list.length > 60) continue;
+      const dx = m.pos.x - p.pos.x, dz = m.pos.z - p.pos.z;
+      if (dx * dx + dz * dz > 900 || m.def.flying) continue;
+      add(m.pos.x, m.pos.y + 0.05, m.pos.z, Math.max(0.32, m.width * 0.8), 0.8);
+    }
+    for (const it of this.entities.items) {
+      if (list.length > 66) break;
+      const dx = it.pos.x - p.pos.x, dz = it.pos.z - p.pos.z;
+      if (dx * dx + dz * dz < 400) add(it.pos.x, it.pos.y, it.pos.z, 0.2, 0.4);
+    }
+    this.renderer.setShadows(list);
   }
 
   // ---- Events from subsystems ---------------------------------------------------------------
@@ -560,13 +645,53 @@ export class Game {
     if (below) this.audio.play(`step_${BLOCKS[below].sound}`, { volume: p.sneaking ? 0.4 : 0.8 });
   }
 
+  /** A bolt somewhere nearby; the flash is instant, the thunder arrives later with distance. */
+  lightning() {
+    this.thunderTimer = 7 + Math.random() * 20;
+    const p = this.player;
+    const a = Math.random() * Math.PI * 2, d = 25 + Math.random() * 60;
+    const x = Math.floor(p.pos.x + Math.cos(a) * d), z = Math.floor(p.pos.z + Math.sin(a) * d);
+    const y = this.precipitationFloor(x, z);
+    if (y < 0) return;
+    this.renderer.strike(x + 0.5, y, z + 0.5);
+    this.fxState.flash = Math.max(this.fxState.flash, 0.28 - d * 0.002);
+    setTimeout(() => this.audio.play('thunder', { volume: Math.max(0.35, 1 - d / 110) }), 250 + d * 18);
+  }
+
+  /** Show the place name once the player has stayed in a new biome (or realm) for a moment. */
+  updateZoneTitle(dt, biome) {
+    const z = this.zone;
+    const key = this.dim === 'overworld' ? biome.key : this.dim;
+    if (key === z.key) {
+      z.cand = null;
+      return;
+    }
+    if (z.cand !== key) {
+      z.cand = key;
+      z.t = 0;
+    }
+    z.t += dt;
+    if (z.t < (z.key === null ? 1.2 : 1.8)) return;
+    z.key = key;
+    z.cand = null;
+    this.app.ui.hud.showZone(this.dim === 'overworld' ? biome.name : DIM_LABEL[this.dim], this.dim === 'overworld' ? '' : 'Another realm');
+  }
+
+  setPortalFx(f) {
+    this.fxState.portal = f;
+    this.app.ui.hud.setPortal(f);
+  }
+
   onLand(dist) {
+    this.fxState.dip = Math.min(0.28, dist * 0.035);
+    if (dist > 2.5) this.ambient.footDust(this.player.pos.x, this.player.pos.y, this.player.pos.z, this.blockBrightness(Math.floor(this.player.pos.x), Math.floor(this.player.pos.y), Math.floor(this.player.pos.z)), Math.min(10, Math.round(dist * 1.5)));
     if (dist > 1.2) this.audio.play('land', { volume: Math.min(1, dist / 6) });
   }
 
   onPlayerHurt(dmg, source) {
     this.audio.play('hurt');
     this.cameraShake = 0.35;
+    this.fxState.hurt = 1;
     this.app.ui.hud.flashDamage();
     this.input.vibrate(40);
     void source;
@@ -738,17 +863,17 @@ export class Game {
     if (!nether && !end) {
       this.portalTimer = 0;
       this.portalLock = false;
-      this.app.ui.hud.setPortal(0);
+      this.setPortalFx(0);
       return;
     }
     if (this.portalLock) return;
     if (this.portalTimer === 0) this.audio.play('portal');
     this.portalTimer += dt;
     const need = end ? 1.5 : this.creative ? 0.2 : 3;
-    this.app.ui.hud.setPortal(Math.min(1, this.portalTimer / need));
+    this.setPortalFx(Math.min(1, this.portalTimer / need));
     if (this.portalTimer < need) return;
     this.portalTimer = 0;
-    this.app.ui.hud.setPortal(0);
+    this.setPortalFx(0);
     const px = Math.floor(p.pos.x), pz = Math.floor(p.pos.z);
     if (end) {
       if (this.dim === 'overworld') this.changeDimension('end', { kind: 'end', x: END_ARRIVAL.x, z: END_ARRIVAL.z });
@@ -780,6 +905,7 @@ export class Game {
       this.entities.clear();
       this.streamer.dispose();
       this.renderer.clearChunks();
+      this.ambient.reset();
       this.meshQueue.clear();
       await this.setupDimension(dim);
       p.pos = { x: trv.x + 0.5, y: dim === 'nether' ? 70 : dim === 'end' ? 70 : 100, z: trv.z + 0.5 };
@@ -874,6 +1000,8 @@ export class Game {
   explode(pos, radius, { damage = radius * 4, destroy = true } = {}) {
     if (destroy) this.world.explode(pos.x, pos.y, pos.z, radius);
     this.audio.play('explode', { pos });
+    this.ambient.explosion(pos.x, pos.y, pos.z, radius);
+    this.fxState.flash = Math.max(this.fxState.flash, Math.max(0, 0.35 - Math.hypot(this.player.pos.x - pos.x, this.player.pos.z - pos.z) * 0.015));
     this.renderer.spawnBlockParticles(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z), TILE.stone, 0.7, 28);
     const reach = radius + 2;
     const p = this.player;

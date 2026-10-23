@@ -13,9 +13,10 @@ export const BIOMES = [
   { id: 7, key: 'swamp', name: 'Mirewood Swamp', surface: 'grass', sub: 'dirt', trees: { density: 0.28, types: ['oak'] }, grass: 0.18, flowers: 0.006, animals: ['snout', 'cluck'], weather: 'rain' },
   { id: 8, key: 'rocky', name: 'Dustbreak Badlands', surface: 'coarse_dirt', sub: 'dirt', trees: { density: 0.025, types: ['oak'] }, grass: 0.05, flowers: 0, animals: ['grazer'], weather: 'none' },
   { id: 9, key: 'taiga', name: 'Pinewatch Taiga', surface: 'grass', sub: 'dirt', trees: { density: 0.5, types: ['pine', 'pine', 'birch'] }, grass: 0.1, flowers: 0.006, animals: ['woolly', 'grazer', 'cluck', 'prowler', 'hopper'], weather: 'rain' },
+  { id: 10, key: 'lake', name: 'Deep Water', surface: 'sand', sub: 'sand', trees: { density: 0, types: [] }, grass: 0, flowers: 0, animals: [], weather: 'rain' },
   { id: 11, key: 'nether', name: 'Cinder Wastes', surface: 'cinderrock', sub: 'cinderrock', trees: { density: 0, types: [] }, grass: 0, flowers: 0, animals: [], weather: 'none' },
   { id: 12, key: 'end', name: 'Void Isles', surface: 'void_stone', sub: 'void_stone', trees: { density: 0, types: [] }, grass: 0, flowers: 0, animals: [], weather: 'none' },
-  { id: 10, key: 'lake', name: 'Deep Water', surface: 'sand', sub: 'sand', trees: { density: 0, types: [] }, grass: 0, flowers: 0, animals: [], weather: 'rain' },
+  { id: 13, key: 'cherry', name: 'Blossom Grove', surface: 'grass', sub: 'dirt', trees: { density: 0.34, types: ['cherry'] }, grass: 0.12, flowers: 0.05, animals: ['woolly', 'hopper', 'cluck'], weather: 'rain' },
 ];
 
 export const BIOME = Object.fromEntries(BIOMES.map((b) => [b.key, b.id]));

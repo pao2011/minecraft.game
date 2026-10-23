@@ -528,6 +528,7 @@ export class Interaction {
       }
     } else return false;
     this.game.renderer.spawnBlockParticles(hit.x, hit.y, hit.z, TILE.grass_top, 1, 6);
+    this.game.ambient.grow(hit.x, hit.y, hit.z);
     this.game.audio.play('grow');
     return true;
   }

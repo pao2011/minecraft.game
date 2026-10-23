@@ -1,5 +1,17 @@
 # Changelog and development log
 
+## 1.2.0 — 2026-10-23 · Visual overhaul
+
+- **Post-processing** (setting *Visual effects*: Off / Standard / Ultra): HDR glow (bloom) on lava, torches, lanterns, the sun, magic and explosions; warm/cool color grading by time of day and realm; vignette; light shafts at sunrise/sunset (Ultra); 4× MSAA (Ultra). Slow devices step down automatically (Ultra → Standard → Off before render distance drops further).
+- **Particles**: 2,300-particle pooled system (additive glow + matter layers) with torch flames, sparks and smoke, lava embers, ore glints, portal swirls, void crystals, glowing creatures, fireflies and butterflies, falling leaves, rain splashes and ripples, Nether ash/embers, End motes, underwater bubbles, water splashes and wakes, sprint/landing dust, hit sparks, death poofs, teleport bursts, fireball trails and big explosions.
+- **Sky**: twinkling stars with colors, aurora, shooting stars, sun/moon halos, round moon with craters, a second cloud layer with lit undersides, horizon haze, a glowing Cinder Realm sky and a nebula over the Void Isles.
+- **Water & light**: rolling ripples, horizon reflections and a sun/moon glitter path; underwater caustics; torch flicker; warmer torchlight; torches now show their flame; biome fog haze (swamp, desert, badlands, snow, taiga, thicket, blossom).
+- **Weather**: thunderstorms with lightning bolts, sky flashes and delayed thunder.
+- **Camera & feel**: sprint FOV kick and speed blur, strafe roll, landing dip, hurt chromatic flash, low-health pulse, underwater/portal/Nether-heat distortion, contact shadows under creatures, items and the player.
+- **HUD**: place-name titles on entering a biome or realm; pulsing hotbar selection.
+- **Content**: *Blossom Grove* biome with pink blossom trees (logs, planks, leaves, saplings) and drifting petals; glowing creatures render above 1.0 so they bloom.
+- **Bug fix**: the biome table was out of id order since 1.1, so lakes looked up the Nether biome (cinderrock lake beds); fixed and covered by a test.
+
 ## 1.1.0 — 2026-10-22
 
 - **Minerals:** tidestone, verdant gem, quartz, abyssal ore (Nether-only) plus crystal/abyssal tool tiers, gold/crystal/abyssal armor.

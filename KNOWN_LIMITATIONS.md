@@ -7,6 +7,13 @@ Honest list of what is missing, simplified or unverified.
 Added with original names and art: new minerals, both extra realms, mineshafts, offhand, coordinates, 11 mobs.
 **Not added:** potions/brewing, enchanting and anvils, redstone, maps, banners, dyes, music discs, elytra, trading/villagers, advancements, command blocks. The Nether/End analogues are simplified originals (no fortress mob spawners, no End cities); in Peaceful difficulty the Void Drake does not spawn. The new realm code was smoke-tested in headless Chromium (`tests/e2e/dims.js`) but not balanced through long play.
 
+## Visual effects (1.2)
+
+- Post-processing needs WebGL2 render-target support; HDR bloom additionally needs half-float targets (`EXT_color_buffer_float` or `EXT_color_buffer_half_float`) and MSAA needs `EXT_color_buffer_float`. Without them the game falls back to a clamped 8-bit pipeline with weaker glow, or no MSAA. **None of this was tried on real Android hardware**; headless software rendering only. Visual effects "Standard" is the default; use Off on very old phones.
+- Frame cost of the effects is unmeasured on phones. Adaptive quality drops Ultra → Standard → Off when frames stay slow (and render distance before the final step).
+- Lightning does not ignite blocks or hurt creatures, and thunder is a synthesized rumble.
+- Particles are screen-facing points (no collisions with the world except falling leaves); point sizes are clamped to 56 px for GPU compatibility.
+
 ## Not verified
 
 - **No Android device or emulator was available.** The container has no hardware

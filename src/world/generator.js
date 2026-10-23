@@ -31,6 +31,7 @@ export class WorldGenerator {
     this.nCave3 = n(12);
     this.nSurf = n(13);
     this.nFlood = n(14);
+    this.nBlossom = n(15);
     this.structCache = new Map();
   }
 
@@ -92,6 +93,7 @@ export class WorldGenerator {
     else if (t < -0.35) biome = hu > -0.3 ? BIOME.taiga : BIOME.plains;
     else if (hot > 0.5) biome = desertW > 0.5 ? BIOME.desert : rockyW > 0.5 ? BIOME.rocky : hu > 0.4 ? BIOME.dense_forest : BIOME.plains;
     else if (swampW > 0.5) biome = BIOME.swamp;
+    else if (t > -0.3 && t < 0.3 && this.nBlossom.fbm2(x / 520 + 7.7, z / 520 - 3.1, 3) * 1.8 > 0.4) biome = BIOME.cherry;
     else if (hu > 0.2) biome = BIOME.dense_forest;
     else if (hu > -0.28) biome = BIOME.forest;
     else biome = BIOME.plains;
@@ -413,6 +415,20 @@ export function growTree(ctx, tree) {
       const r = i % 2 === 1 ? Math.min(3, 1 + Math.floor(i / 3)) : 1;
       for (let dx = -r; dx <= r; dx++) {
         for (let dz = -r; dz <= r; dz++) if (dx * dx + dz * dz <= r * r + 0.5) leaf(x + dx, ly, z + dz);
+      }
+    }
+  } else if (type === 'cherry') {
+    // Wide, flat-topped crown on a short bent trunk.
+    trunk = 4 + (hash % 2);
+    const top = y + trunk;
+    for (let ly = top - 1; ly <= top + 2; ly++) {
+      const r = ly === top + 2 ? 1 : ly === top + 1 ? 3 : ly === top ? 3 : 2;
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          const d = dx * dx + dz * dz;
+          if (d > r * r + 1 || (d > r * r - 1 && rnd(dx, ly, dz) < 0.35)) continue;
+          leaf(x + dx, ly, z + dz);
+        }
       }
     }
   } else if (type === 'dark') {

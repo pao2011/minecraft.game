@@ -157,6 +157,11 @@ def(100, 'end_portal', 'Void Gate', { shape: 'portal', solid: false, render: 'tr
 def(101, 'cobweb', 'Cobweb', { shape: 'cross', solid: false, render: 'cutout', lightOpacity: 0, hardness: 4, tool: 'sword', sound: 'wool', drops: [{ item: 'string' }], category: 'plants' });
 def(102, 'potatoes', 'Potato Crop', { ...plant, shape: 'crop', crop: { item: 'potato', seed: 'potato', tiles: [T.potatoes_0, T.potatoes_1, T.potatoes_2, T.potatoes_3] }, creative: false, tex: { all: T.potatoes_3 } });
 def(103, 'void_crystal', 'Void Crystal', { hardness: 0.4, emit: 12, sound: 'glass', drops: [], category: 'decoration' });
+// Blossom wood (ids 105-108): its own tree type with pink canopies.
+def(105, 'cherry_log', 'Blossom Log', { hardness: 2, tool: 'axe', sound: 'wood', tex: { side: T.cherry_log, end: T.cherry_log_top }, axis: true, category: 'wood' });
+def(106, 'cherry_planks', 'Blossom Planks', { hardness: 2, tool: 'axe', sound: 'wood', tex: { all: T.cherry_planks }, category: 'wood' });
+def(107, 'cherry_leaves', 'Blossom Leaves', { render: 'cutout', lightOpacity: 1, hardness: 0.2, tool: 'hoe', sound: 'grass', tex: { all: T.cherry_leaves }, drops: [{ item: 'cherry_sapling', chance: 0.07 }], leaves: true, category: 'plants' });
+def(108, 'cherry_sapling', 'Blossom Sapling', { ...plant, sapling: 'cherry', tex: { all: T.cherry_sapling } });
 def(104, 'blast_charge', 'Blast Charge', { hardness: 0, sound: 'grass', tex: { side: T.tnt_side, end: T.tnt_top }, category: 'functional' });
 
 export const AIR = 0;

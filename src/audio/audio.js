@@ -281,6 +281,11 @@ export class AudioManager {
         this.tone(dest, t, 1800, 0.25, 0.2, 'square', -1400);
         this.noiseBurst(dest, t, 0.2, 'highpass', 3000, 0.5, 0.3);
         break;
+      case 'thunder':
+        this.noiseBurst(dest, t, 1.8, 'lowpass', 220, 0.7, 0.9);
+        this.noiseBurst(dest, t + 0.5, 1.4, 'lowpass', 140, 0.7, 0.7);
+        this.tone(dest, t, 48, 1.6, 0.5, 'sawtooth', -20);
+        break;
       case 'explode':
         this.noiseBurst(dest, t, 0.7, 'lowpass', 500, 0.7, 0.9);
         this.tone(dest, t, 90, 0.5, 0.5, 'sawtooth', -60);

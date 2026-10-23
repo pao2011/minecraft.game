@@ -99,7 +99,7 @@ async function newContext(viewport = { width: 900, height: 420 }) {
   const ctx = await browser.newContext({ viewport, hasTouch: true, deviceScaleFactor: 1 });
   await ctx.addInitScript(() => {
     if (!localStorage.getItem('blockwild.settings.v1')) {
-      localStorage.setItem('blockwild.settings.v1', JSON.stringify({ controlsMode: 'touch', renderDistance: 3, quality: 'custom', tutorialDone: true, adaptiveQuality: false, musicVolume: 0 }));
+      localStorage.setItem('blockwild.settings.v1', JSON.stringify({ controlsMode: 'touch', renderDistance: 3, quality: 'custom', effects: 'off', tutorialDone: true, adaptiveQuality: false, musicVolume: 0 }));
     }
   });
   return ctx;
@@ -305,7 +305,7 @@ async function main() {
       const g = window.__blockwild.game;
       g.player.inventory.set(0, { id: 'cobblestone', count: 5 });
     });
-    const hs = await center(page, '.hslot >> nth=0');
+    const hs = await center(page, '.hslot:not(.off) >> nth=0');
     await touch.tap(hs.x, hs.y);
     await sleep(100);
     // Stand on flat ground and look down at the block in front of the feet.
@@ -940,7 +940,7 @@ async function main() {
       await createWorld(pg, { name: `L${w}`, seed: 'layout' });
       const boxes = await pg.evaluate(() => {
         const r = (el) => { const b = el.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width, h: b.height }; };
-        return { btns: [...document.querySelectorAll('.tbtn:not(.hidden)')].map(r), hotbar: r(document.querySelector('.hotbar')), joy: r(document.querySelector('.joy-base')), vw: innerWidth, vh: innerHeight, slot: r(document.querySelector('.hslot')) };
+        return { btns: [...document.querySelectorAll('.tbtn:not(.hidden)')].map(r), hotbar: r(document.querySelector('.hotbar')), joy: r(document.querySelector('.joy-base')), vw: innerWidth, vh: innerHeight, slot: r(document.querySelector('.hslot:not(.off)')) };
       });
       const inside = (b) => b.l >= 0 && b.t >= 0 && b.r <= boxes.vw + 0.5 && b.b <= boxes.vh + 0.5;
       const overlap = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;

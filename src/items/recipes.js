@@ -4,8 +4,8 @@ import { Inventory } from './inventory.js';
 import { ITEMS, TIERS, ARMOR_SETS, ARMOR_SLOTS } from './items.js';
 
 export const TAGS = {
-  planks: ['oak_planks', 'pine_planks', 'birch_planks', 'dark_planks'],
-  logs: ['oak_log', 'pine_log', 'birch_log', 'dark_log'],
+  planks: ['oak_planks', 'pine_planks', 'birch_planks', 'dark_planks', 'cherry_planks'],
+  logs: ['oak_log', 'pine_log', 'birch_log', 'dark_log', 'cherry_log'],
   stone_like: ['cobblestone'],
   fuel_coal: ['coal', 'charcoal'],
 };
@@ -23,7 +23,7 @@ function recipe(out, count, ingredients, station = 'hand', category = 'basics') 
 }
 
 // Basics (no station).
-for (const w of ['oak', 'pine', 'birch', 'dark']) recipe(`${w}_planks`, 4, { [`${w}_log`]: 1 }, 'hand', 'basics');
+for (const w of ['oak', 'pine', 'birch', 'dark', 'cherry']) recipe(`${w}_planks`, 4, { [`${w}_log`]: 1 }, 'hand', 'basics');
 recipe('stick', 4, { '#planks': 2 });
 recipe('workbench', 1, { '#planks': 4 });
 recipe('torch', 4, { '#fuel_coal': 1, stick: 1 });
@@ -114,6 +114,7 @@ export const SMELTING = {
   pine_log: 'charcoal',
   birch_log: 'charcoal',
   dark_log: 'charcoal',
+  cherry_log: 'charcoal',
   raw_steak: 'cooked_steak',
   raw_ham: 'cooked_ham',
   raw_fowl: 'roast_fowl',

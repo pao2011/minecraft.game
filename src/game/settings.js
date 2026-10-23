@@ -9,6 +9,7 @@ const pick = (def, options) => ({ type: 'enum', def, options });
 export const SCHEMA = {
   quality: pick('medium', ['low', 'medium', 'high', 'custom']),
   renderDistance: num(5, 2, 10),
+  effects: pick('standard', ['off', 'standard', 'ultra']),
   particles: num(0.7, 0, 1),
   clouds: bool(true),
   fancyLeaves: bool(true),
@@ -92,7 +93,7 @@ export class Settings {
     const val = validate(k, v);
     if (val === undefined || val === this.values[k]) return;
     this.values[k] = val;
-    if (['renderDistance', 'particles', 'clouds', 'fancyLeaves', 'waterAnimation', 'resolution'].includes(k) && this.values.quality !== 'custom') this.values.quality = 'custom';
+    if (['renderDistance', 'effects', 'particles', 'clouds', 'fancyLeaves', 'waterAnimation', 'resolution'].includes(k) && this.values.quality !== 'custom') this.values.quality = 'custom';
     this.save();
     for (const fn of this.listeners) fn(k, val);
   }
@@ -104,6 +105,7 @@ export class Settings {
       quality: name,
       renderDistance: p.renderDistance,
       particles: p.particles,
+      effects: p.effects,
       clouds: p.clouds,
       fancyLeaves: p.fancyLeaves,
       waterAnimation: p.waterAnimation,

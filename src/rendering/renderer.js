@@ -6,6 +6,9 @@ import { chunkVertex, chunkFragment, translucentFragment, skyVertex, skyFragment
 import { CHUNK_SIZE, SECTION_SIZE } from '../config/constants.js';
 import { ATLAS_COLS, ATLAS_ROWS, TILE } from '../world/tiles.js';
 import { clamp, lerp, smoothstep, makeRng } from '../util/noise.js';
+import { PostFX, FX_DEFAULTS } from './post.js';
+import { ParticleSystem } from './particles.js';
+import { BlobShadows } from './blobShadows.js';
 
 const v3 = (r, g, b) => new THREE.Vector3(r, g, b);
 const SKY = {
@@ -25,6 +28,8 @@ export class Renderer {
     this.gl.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.gl.autoClear = false;
     this.gl.setClearColor(0x000000);
+    this.post = new PostFX(this.gl);
+    this.fx = { ...FX_DEFAULTS };
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(70, 1, 0.05, 400);
     this.camera.rotation.order = 'YXZ';
@@ -32,7 +37,7 @@ export class Renderer {
     this.scene.fog = new THREE.Fog(0xaaccee, 40, 80);
     this.sections = new Map();
     this.time = 0;
-    this.quality = { pixelRatio: 1, clouds: true, waterAnimation: true, particles: 1 };
+    this.quality = { pixelRatio: 1, clouds: true, waterAnimation: true, particles: 1, effects: 'off' };
 
     const { pixels, width, height } = buildAtlasPixels();
     this.atlasPixels = pixels;
@@ -53,8 +58,12 @@ export class Renderer {
       uFogNear: { value: 40 },
       uFogFar: { value: 80 },
       uMinLight: { value: 0.03 },
+      uMinTint: { value: new THREE.Vector3(1, 1, 1) },
       uGamma: { value: 0.25 },
       uHeld: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uSunColor: { value: new THREE.Vector3(1, 0.9, 0.7) },
+      uUnder: { value: 0 },
     };
     this.opaqueMat = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: chunkVertex, fragmentShader: chunkFragment });
     this.transMat = new THREE.ShaderMaterial({
@@ -64,6 +73,12 @@ export class Renderer {
     this.buildClouds();
     this.buildSelection();
     this.buildParticles();
+    this.pfx = new ParticleSystem(this.scene);
+    this.blobs = new BlobShadows(this.scene);
+    this.sizeVec = new THREE.Vector2();
+    this.sunWorld = new THREE.Vector3(0, 1, 0);
+    this.sunScreen = new THREE.Vector3();
+    this.rayPower = 0;
     this.buildHand();
     this.resize();
   }
@@ -146,6 +161,10 @@ export class Renderer {
       uHorizon: { value: SKY.dayHorizon.clone() },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) },
       uGlow: { value: new THREE.Vector3(0, 0, 0) },
+      uTime: { value: 0 },
+      uAurora: { value: 0 },
+      uFlash: { value: 0 },
+      uRealm: { value: 0 },
     };
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(10, 24, 12),
@@ -160,14 +179,18 @@ export class Renderer {
     this.skyScene.add(sky);
 
     // Sun and moon are small pixel-art discs drawn on the sky.
-    const disc = (color, glowColor, size) => {
+    const disc = (color, glowColor, size, craters = false) => {
       const c = document.createElement('canvas');
       c.width = c.height = 32;
       const g = c.getContext('2d');
       g.fillStyle = glowColor;
-      g.fillRect(4, 4, 24, 24);
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (Math.hypot(x - 15.5, y - 15.5) < 13) g.fillRect(x, y, 1, 1);
       g.fillStyle = color;
-      g.fillRect(8, 8, 16, 16);
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) if (Math.hypot(x - 15.5, y - 15.5) < 8.5) g.fillRect(x, y, 1, 1);
+      if (craters) {
+        g.fillStyle = 'rgba(120,135,160,0.55)';
+        for (const [x, y, r] of [[12, 12, 2], [19, 17, 2.4], [14, 20, 1.4], [20, 11, 1.2]]) for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) if (Math.hypot(i, j) <= r) g.fillRect(x + i, y + j, 1, 1);
+      }
       const tex = new THREE.CanvasTexture(c);
       tex.magFilter = THREE.NearestFilter;
       tex.minFilter = THREE.NearestFilter;
@@ -177,23 +200,68 @@ export class Renderer {
       this.skyScene.add(m);
       return m;
     };
-    this.sun = disc('#fff6c8', 'rgba(255,230,140,0.35)', 2.2);
-    this.moon = disc('#dfe6f2', 'rgba(200,215,240,0.18)', 1.6);
+    this.sun = disc('#fff6c8', 'rgba(255,230,140,0.3)', 2.4);
+    this.moon = disc('#dfe6f2', 'rgba(200,215,240,0.16)', 1.7, true);
 
     const rng = makeRng(7);
-    const starPos = [];
-    for (let i = 0; i < 600; i++) {
+    const starPos = [], starAux = [];
+    for (let i = 0; i < 1100; i++) {
       const u = rng() * 2 - 1, a = rng() * Math.PI * 2;
       const r = Math.sqrt(1 - u * u);
       if (u < -0.1) continue;
       starPos.push(r * Math.cos(a) * 9, u * 9, r * Math.sin(a) * 9);
+      const mag = rng();
+      starAux.push(rng() * 6.28, 1 + mag * mag * 2.4, 0.5 + mag * 0.9); // phase, size px, brightness
     }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
-    this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, sizeAttenuation: false, transparent: true, depthWrite: false, depthTest: false, fog: false }));
+    sg.setAttribute('aux', new THREE.Float32BufferAttribute(starAux, 3));
+    this.starUniforms = { uOpacity: { value: 0 }, uTime: { value: 0 }, uBoost: { value: 1 }, uPx: { value: 1 } };
+    this.stars = new THREE.Points(sg, new THREE.ShaderMaterial({
+      uniforms: this.starUniforms, transparent: true, depthWrite: false, depthTest: false, fog: false, blending: THREE.AdditiveBlending,
+      vertexShader: `attribute vec3 aux; uniform float uTime; uniform float uPx; varying float vB; varying vec3 vC;
+        void main() { float tw = 0.75 + 0.25 * sin(uTime * (1.5 + aux.x * 0.4) + aux.x * 9.0); vB = aux.z * tw;
+          vC = mix(vec3(0.75, 0.85, 1.0), vec3(1.0, 0.92, 0.75), fract(aux.x * 3.7));
+          gl_PointSize = aux.y * uPx; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform float uOpacity; uniform float uBoost; varying float vB; varying vec3 vC;
+        void main() { float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(vC * vB * uBoost * a * uOpacity, 1.0); }`,
+    }));
+    this.stars.material.opacity = 0; // kept for callers that read it; the shader uses uOpacity
     this.stars.renderOrder = 1;
     this.stars.frustumCulled = false;
     this.skyScene.add(this.stars);
+
+    // Soft additive halos around the sun and moon.
+    const hc = document.createElement('canvas');
+    hc.width = hc.height = 64;
+    const hg = hc.getContext('2d');
+    const grad = hg.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.25, 'rgba(255,255,255,0.35)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    hg.fillStyle = grad;
+    hg.fillRect(0, 0, 64, 64);
+    const haloTex = new THREE.CanvasTexture(hc);
+    const halo = (size) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: haloTex, transparent: true, depthWrite: false, depthTest: false, fog: false, blending: THREE.AdditiveBlending }));
+      m.renderOrder = 1.5;
+      m.frustumCulled = false;
+      this.skyScene.add(m);
+      return m;
+    };
+    this.sunHalo = halo(9);
+    this.moonHalo = halo(5);
+
+    // Shooting star: one additive streak that restarts every so often at night.
+    const sgeo = new THREE.BufferGeometry();
+    sgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    sgeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array([0, 0, 0, 2, 2, 2.4]), 3));
+    this.meteor = new THREE.Line(sgeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, fog: false }));
+    this.meteor.frustumCulled = false;
+    this.meteor.visible = false;
+    this.meteor.renderOrder = 1.6;
+    this.skyScene.add(this.meteor);
+    this.meteorState = { t: 0, wait: 8, dir: new THREE.Vector3(), from: new THREE.Vector3() };
   }
 
   buildClouds() {
@@ -228,6 +296,11 @@ export class Renderer {
     this.clouds.renderOrder = 2;
     this.clouds.frustumCulled = false;
     this.scene.add(this.clouds);
+    // A darker underside layer a little lower gives the flat sheet some thickness.
+    this.cloudsLow = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.8 }));
+    this.cloudsLow.renderOrder = 1.9;
+    this.cloudsLow.frustumCulled = false;
+    this.scene.add(this.cloudsLow);
   }
 
   buildSelection() {
@@ -326,6 +399,8 @@ export class Renderer {
   }
 
   updateParticles(dt, world) {
+    this.gl.getDrawingBufferSize(this.sizeVec);
+    this.pfx.update(dt, world, { height: this.sizeVec.y, fov: this.camera.fov, far: this.uniforms.uFogFar.value, hdr: this.post.enabled && this.post.hdr });
     const ps = this.particles;
     let n = 0;
     for (let i = ps.length - 1; i >= 0; i--) {
@@ -480,6 +555,75 @@ export class Renderer {
     st.group.add(mesh);
   }
 
+  /** Shooting star on clear nights; one streak every 10-30 seconds. */
+  updateMeteor(dt) {
+    const m = this.meteorState;
+    const night = (this.nightness || 0) * (1 - (this.fx.sat < 0.9 ? 0.5 : 0));
+    if (m.t <= 0) {
+      this.meteor.visible = false;
+      m.wait -= dt;
+      if (m.wait <= 0 && night > 0.7 && this.starUniforms.uOpacity.value > 0.6) {
+        m.t = 0.9;
+        m.wait = 10 + Math.random() * 20;
+        const a = Math.random() * Math.PI * 2;
+        m.from.set(Math.cos(a), 0.45 + Math.random() * 0.4, Math.sin(a)).normalize().multiplyScalar(9);
+        m.dir.set(Math.random() - 0.5, -0.35 - Math.random() * 0.25, Math.random() - 0.5).normalize();
+      }
+      return;
+    }
+    m.t -= dt;
+    const k = 1 - m.t / 0.9;
+    const head = m.from.clone().addScaledVector(m.dir, k * 7);
+    const tail = m.from.clone().addScaledVector(m.dir, Math.max(0, k - 0.22) * 7);
+    const pos = this.meteor.geometry.attributes.position;
+    pos.setXYZ(0, tail.x, tail.y, tail.z);
+    pos.setXYZ(1, head.x, head.y, head.z);
+    pos.needsUpdate = true;
+    this.meteor.material.opacity = Math.sin(k * Math.PI);
+    this.meteor.visible = true;
+  }
+
+  /** Lightning bolt from the clouds to (x, y, z); fades out over a fraction of a second. */
+  strike(x, y, z) {
+    this.bolt?.geometry.dispose();
+    if (this.bolt) this.scene.remove(this.bolt);
+    const pts = [];
+    const top = 150;
+    let cx = x + (Math.random() - 0.5) * 16, cz = z + (Math.random() - 0.5) * 16;
+    const steps = 14;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const yy = top + (y - top) * t;
+      pts.push(new THREE.Vector3(i === steps ? x : cx, yy, i === steps ? z : cz));
+      cx += (x - cx) * 0.18 + (Math.random() - 0.5) * 7 * (1 - t);
+      cz += (z - cz) * 0.18 + (Math.random() - 0.5) * 7 * (1 - t);
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    this.bolt = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: new THREE.Color(this.post.enabled && this.post.hdr ? 6 : 1, this.post.enabled && this.post.hdr ? 6 : 1, this.post.enabled && this.post.hdr ? 7 : 1), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.bolt.frustumCulled = false;
+    this.boltLife = 0.35;
+    this.scene.add(this.bolt);
+    this.skyUniforms.uFlash.value = 1;
+  }
+
+  updateBolt(dt) {
+    this.skyUniforms.uFlash.value = Math.max(0, this.skyUniforms.uFlash.value - dt * 3);
+    if (!this.bolt) return;
+    this.boltLife -= dt;
+    // Two quick flickers, then gone.
+    this.bolt.material.opacity = this.boltLife > 0 ? (Math.sin(this.boltLife * 60) > -0.3 ? 1 : 0.25) * Math.min(1, this.boltLife * 4) : 0;
+    if (this.boltLife <= 0) {
+      this.bolt.geometry.dispose();
+      this.scene.remove(this.bolt);
+      this.bolt = null;
+    }
+  }
+
+  /** Contact shadows; casters sit on the ground. Fades with the sun. */
+  setShadows(casters) {
+    this.blobs.set(casters, 0.3 + 0.7 * (this.daylight ?? 1));
+  }
+
   /** Dynamic light carried by the player (a held torch, either hand); level 0 turns it off. */
   setHeldLight(x, y, z, level) {
     this.uniforms.uHeld.value.set(x, y, z, level);
@@ -494,7 +638,7 @@ export class Renderer {
   /**
    * timeOfDay in [0,1): 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight.
    */
-  setEnvironment({ timeOfDay, rain = 0, underwater = false, inLava = false, renderDistance = 5, brightness = 0.5, dimension = 'overworld' }) {
+  setEnvironment({ timeOfDay, rain = 0, underwater = false, inLava = false, renderDistance = 5, brightness = 0.5, dimension = 'overworld', cold = 0, fog = null }) {
     const angle = timeOfDay * Math.PI * 2;
     const sunH = Math.sin(angle);
     const day = smoothstep(-0.22, 0.28, sunH);
@@ -514,6 +658,8 @@ export class Renderer {
       top.set(0.05, 0.02, 0.1);
       horizon.set(0.13, 0.07, 0.2);
     }
+    this.skyUniforms.uRealm.value = dimension === 'nether' ? 1 : dimension === 'end' ? 2 : 0;
+    this.fx.heat = dimension === 'nether' ? 1 : 0;
     this.skyUniforms.uTop.value.copy(top);
     this.skyUniforms.uHorizon.value.copy(horizon);
     const sunDir = new THREE.Vector3(Math.cos(angle), sunH, 0.25).normalize();
@@ -525,7 +671,8 @@ export class Renderer {
     const skyLight = dimension === 'nether' ? v3(1, 0.55, 0.42) : dimension === 'end' ? v3(0.8, 0.7, 1) : v3(0.55, 0.62, 0.9).lerp(v3(1, 1, 1), day).lerp(v3(1, 0.86, 0.72), sunset * 0.5);
     this.uniforms.uSkyLight.value.copy(skyLight);
     this.uniforms.uGamma.value = brightness * 0.9;
-    this.uniforms.uMinLight.value = (dimension === 'nether' ? 0.07 : 0.025) + brightness * 0.07;
+    this.uniforms.uMinLight.value = (dimension === 'nether' ? 0.14 : 0.025) + brightness * 0.07;
+    this.uniforms.uMinTint.value.set(...(dimension === 'nether' ? [1.1, 0.5, 0.36] : dimension === 'end' ? [0.8, 0.7, 1.1] : [0.9, 0.97, 1.1]));
 
     const far = renderDistance * CHUNK_SIZE;
     let fogColor = horizon.clone();
@@ -545,6 +692,12 @@ export class Renderer {
       near *= 1 - rain * 0.45;
       fogFar *= 1 - rain * 0.25;
     }
+    if (fog && !underwater && !inLava && dimension === 'overworld') {
+      // Biome haze: swamp mist, desert dust... blended in by `fog.mix`, dimmed with the daylight.
+      fogColor.lerp(v3(fog.tint[0], fog.tint[1], fog.tint[2]).multiplyScalar(0.12 + 0.88 * day), fog.mix);
+      near *= 1 - fog.mix * fog.near;
+      fogFar *= 1 - fog.mix * fog.far;
+    }
     this.uniforms.uFogColor.value.copy(fogColor);
     this.uniforms.uFogNear.value = near;
     this.uniforms.uFogFar.value = fogFar;
@@ -555,13 +708,42 @@ export class Renderer {
     this.camera.updateProjectionMatrix();
 
     this.sun.visible = this.moon.visible = !other;
-    this.clouds.visible = !other && !!this.quality.clouds;
+    this.clouds.visible = this.cloudsLow.visible = !other && !!this.quality.clouds;
     this.sun.position.copy(sunDir).multiplyScalar(8);
     this.moon.position.copy(sunDir).multiplyScalar(-8);
     this.sun.lookAt(0, 0, 0);
     this.moon.lookAt(0, 0, 0);
-    this.stars.material.opacity = dimension === 'end' ? 0.95 : dimension === 'nether' ? 0 : clamp((1 - day) * 1.4 - rain, 0, 1);
+    const starOp = dimension === 'end' ? 0.95 : dimension === 'nether' ? 0 : clamp((1 - day) * 1.4 - rain, 0, 1);
+    this.starUniforms.uOpacity.value = starOp;
+    this.nightness = other ? 0 : 1 - day;
+    // Aurora ribbons at night, strongest in cold biomes.
+    this.skyUniforms.uAurora.value = dimension === 'overworld' ? clamp((1 - day) * 1.4 - 0.2, 0, 1) * (0.5 + 0.5 * cold) * (1 - rain) : dimension === 'end' ? 0.55 : 0;
+    const lightDir = sunH > -0.05 ? sunDir : sunDir.clone().negate();
+    this.uniforms.uSunDir.value.copy(lightDir);
+    const sunUp = smoothstep(-0.05, 0.25, sunH);
+    this.sunWorld.copy(sunDir);
+    this.rayPower = other || underwater ? 0 : sunUp * (1 - rain) * (0.55 + sunset * 0.8);
+    this.uniforms.uSunColor.value.set(...(other ? [0, 0, 0] : sunH > -0.05
+      ? [lerp(1, 0.8, 1 - sunset) * 1.0, lerp(0.95, 0.5, sunset), lerp(0.85, 0.25, sunset)].map((v) => v * sunUp * (1 - rain))
+      : [0.45, 0.55, 0.8].map((v) => v * (1 - day) * (1 - rain))));
+    this.uniforms.uUnder.value = underwater ? 1 : 0;
+    const warm = sunset * 0.6;
+    this.sunHalo.visible = !other && sunH > -0.15;
+    this.sunHalo.position.copy(sunDir).multiplyScalar(8);
+    this.sunHalo.lookAt(0, 0, 0);
+    this.sunHalo.material.color.setRGB(1.2 + warm, 0.95 - warm * 0.4, 0.55 - warm * 0.35).multiplyScalar(0.34 * (1 - rain * 0.6) * (this.post.enabled && this.post.hdr ? 1.2 : 1));
+    this.sunHalo.scale.setScalar(1 + sunset * 0.7);
+    this.moonHalo.visible = !other && sunH < 0.15;
+    this.moonHalo.position.copy(sunDir).multiplyScalar(-8);
+    this.moonHalo.lookAt(0, 0, 0);
+    this.moonHalo.material.color.setRGB(0.5, 0.62, 0.9).multiplyScalar(0.45 * (1 - day) * (1 - rain));
     this.clouds.material.color.setRGB(lerp(0.18, 1, day), lerp(0.2, 1, day), lerp(0.28, 1, day)).multiplyScalar(1 - rain * 0.35);
+    // Undersides pick up the sunset glow and turn grey in storms.
+    this.cloudsLow.material.color.setRGB(lerp(0.12, 0.72, day) + sunset * 0.25, lerp(0.14, 0.76, day) + sunset * 0.05, lerp(0.22, 0.86, day) - sunset * 0.1).multiplyScalar(1 - rain * 0.3);
+    // Color grading: warm at sunset, cool moonlit nights, hot Nether, violet End.
+    this.fx.tint = dimension === 'nether' ? [1.1, 0.93, 0.86] : dimension === 'end' ? [0.96, 0.9, 1.1]
+      : [lerp(0.84, 1.02, day) + sunset * 0.1, lerp(0.92, 1, day) - sunset * 0.03, lerp(1.1, 0.97, day) - sunset * 0.14];
+    this.fx.sat = dimension === 'overworld' ? 1.04 + day * 0.08 - rain * 0.25 : 1.1;
     this.dayFactor = day;
     this.daylight = daylight;
     return { daylight, skyLight };
@@ -581,11 +763,36 @@ export class Renderer {
   setQuality(q) {
     Object.assign(this.quality, q);
     this.uniforms.uWave.value = q.waterAnimation ? 1 : 0;
-    this.clouds.visible = !!q.clouds;
+    this.clouds.visible = this.cloudsLow.visible = !!q.clouds;
+    this.setEffects(this.quality.effects);
     this.resize();
   }
 
+  /** 'off' | 'standard' | 'ultra': offscreen target + bloom/grading (ultra adds MSAA). */
+  setEffects(mode) {
+    this.post.setMode(mode);
+    const hdr = this.post.enabled && this.post.hdr;
+    // Bright sky bodies exceed 1.0 in the half-float target so they bloom.
+    this.sun.material.color.setScalar(hdr ? 1.9 : 1);
+    this.moon.material.color.setScalar(hdr ? 1.15 : 1);
+    this.starUniforms.uBoost.value = hdr ? 2 : 1;
+  }
+
+  /** Per-frame screen effects: damage, under, portal, flash, speed (0..1), tint [r,g,b], sat. */
+  setScreenFx(fx) {
+    Object.assign(this.fx, fx);
+  }
+
   setFov(fov) {
+    this.baseFov = fov;
+    this.setFovKick(this.fovKick || 0);
+  }
+
+  /** Extra degrees on top of the user's FOV (sprint rush). */
+  setFovKick(deg) {
+    this.fovKick = deg;
+    const fov = (this.baseFov || 70) + deg;
+    if (Math.abs(fov - this.camera.fov) < 0.02) return;
     this.camera.fov = fov;
     this.camera.updateProjectionMatrix();
   }
@@ -600,18 +807,36 @@ export class Renderer {
     this.handCamera.aspect = w / h;
     this.handCamera.updateProjectionMatrix();
     this.pPoints.material.uniforms.uScale.value = h * this.gl.getPixelRatio();
+    this.post.resize();
   }
 
   /** Render one frame. pose: {x, y, z, yaw, pitch}; walking: 0..1 bob intensity. */
   render(pose, dt, { showHand = true, walking = 0 } = {}) {
     this.time += dt;
     this.uniforms.uTime.value = this.time;
+    this.skyUniforms.uTime.value = this.time;
+    this.starUniforms.uTime.value = this.time;
+    this.starUniforms.uPx.value = this.gl.getPixelRatio();
+    this.updateMeteor(dt);
+    this.updateBolt(dt);
     const cam = this.camera;
     cam.position.set(pose.x, pose.y, pose.z);
-    cam.rotation.set(pose.pitch, pose.yaw, 0);
+    cam.rotation.set(pose.pitch, pose.yaw, pose.roll || 0);
     this.clouds.position.set(Math.floor(pose.x / 12) * 12, 112, Math.floor(pose.z / 12) * 12);
+    this.cloudsLow.position.set(this.clouds.position.x, 110.4, this.clouds.position.z);
     this.cloudTex.offset.set((this.time * 0.4 + this.clouds.position.x) / (64 * 12), -this.clouds.position.z / (64 * 12));
-    this.gl.clear();
+    const post = this.post.enabled;
+    if (post) {
+      // Sun position on screen for the light-shaft pass (only when it is in front of the camera).
+      this.sunScreen.copy(this.sunWorld).multiplyScalar(100).add(cam.position);
+      cam.updateMatrixWorld();
+      this.sunScreen.project(cam);
+      const front = this.sunScreen.z < 1 && this.sunScreen.z > -1 ? 1 : 0;
+      const edge = 1 - clamp((Math.max(Math.abs(this.sunScreen.x), Math.abs(this.sunScreen.y)) - 0.9) / 1.2, 0, 1);
+      this.fx.rays = [this.sunScreen.x * 0.5 + 0.5, this.sunScreen.y * 0.5 + 0.5, front * edge * this.rayPower];
+    }
+    if (post) this.post.begin();
+    else this.gl.clear();
     this.skyCamera.rotation.copy(cam.rotation);
     this.skyCamera.fov = cam.fov;
     this.skyCamera.aspect = cam.aspect;
@@ -630,6 +855,7 @@ export class Renderer {
       this.gl.clearDepth();
       this.gl.render(this.handScene, this.handCamera);
     }
+    if (post) this.post.end(this.time, this.fx);
   }
 
   setHandBrightness(b) {

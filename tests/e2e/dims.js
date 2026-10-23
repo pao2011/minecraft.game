@@ -48,6 +48,18 @@ try {
   const off = await page.evaluate(() => window.__blockwild.game.player.offhand.get(0)?.id);
   if (off !== 'shield') fail(`offhand is ${off}`);
 
+  // Visual effects modes all render a lit, non-trivial frame without errors.
+  for (const mode of ['off', 'standard', 'ultra']) {
+    await page.evaluate((m) => window.__blockwild.settings.set('effects', m), mode);
+    await sleep(2500);
+    const mm = await page.evaluate(() => window.__blockwild.renderer.post.mode);
+    if (mm !== mode) fail(`effects mode ${mm} != ${mode}`);
+    const png = await page.screenshot();
+    if (png.length < 30000) fail(`frame in ${mode} looks blank (${png.length} bytes)`);
+    console.log('effects', mode, 'frame', png.length, 'bytes, particles', await page.evaluate(() => window.__blockwild.renderer.pfx.count));
+  }
+  await page.evaluate(() => window.__blockwild.settings.set('effects', 'standard'));
+
   // Nether and End travel
   for (const [target, trv] of [['nether', { kind: 'portal', x: 0, z: 0, axis: 0 }], ['end', { kind: 'end', x: 0, z: 0 }], ['overworld', { kind: 'respawn', x: 0, z: 0 }]]) {
     await page.evaluate(([t, v]) => window.__blockwild.game.changeDimension(t, v), [target, trv]);

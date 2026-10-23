@@ -49,6 +49,7 @@ export class HUD {
     this.coords = h('div.coords.hidden');
     this.bossBar = h('div.bossbar.hidden', h('div.name', 'Void Drake'), h('div.track', h('i')));
     this.portal = h('div.portal-tint');
+    this.zone = h('div.zone-title');
     this.hslots = [];
     for (let i = 0; i < 9; i++) {
       const s = h('div.hslot', { 'data-slot': i });
@@ -62,7 +63,7 @@ export class HUD {
     this.statsEl = h('div.stats', this.healthBar, this.foodBar);
     this.subEl = h('div.subbar', this.armorBar, this.airBar);
     this.el.append(
-      this.water, this.damage, this.crosshair, this.eatRing, this.toasts, this.pickups, this.debug, this.saving, this.heldName, this.coords, this.bossBar, this.portal,
+      this.water, this.damage, this.crosshair, this.eatRing, this.toasts, this.pickups, this.debug, this.saving, this.heldName, this.coords, this.bossBar, this.portal, this.zone,
       h('div.hotbar-wrap', this.subEl, this.statsEl, this.hotbar),
     );
     this.last = {};
@@ -173,6 +174,14 @@ export class HUD {
       `Seed ${game.record.seed}  JS heap ${mem}`,
       `Last save ${game.lastSaveOk ? 'ok' : 'FAILED'} ${(game.stats.lastSaveMs ?? 0).toFixed(1)} ms`,
     ].join('\n');
+  }
+
+  /** Big fading place name (biome or realm) near the top of the screen. */
+  showZone(name, sub = '') {
+    this.zone.replaceChildren(h('div.zname', name), sub ? h('div.zsub', sub) : '');
+    this.zone.classList.remove('on');
+    void this.zone.offsetWidth; // restart the animation
+    this.zone.classList.add('on');
   }
 
   toggleCoords(on) {

@@ -387,6 +387,21 @@ const P = {
   pine_leaves: (t) => leaves(t, false, [48, 92, 60]),
   birch_leaves: (t) => leaves(t, false, [118, 160, 72]),
   dark_leaves: (t) => leaves(t, true),
+  cherry_log: (t) => logSide(t, [136, 88, 94], [96, 60, 66]),
+  cherry_log_top: (t) => logTop(t, [226, 168, 170], [92, 58, 62]),
+  cherry_planks: (t) => planks(t, [226, 160, 164]),
+  cherry_leaves(t) {
+    leaves(t, false, [240, 148, 186]);
+    // a few pale petals catch the light
+    for (let k = 0; k < 26; k++) {
+      const x = t.rng.int(0, 15), y = t.rng.int(0, 15);
+      if (t.alpha(x, y) > 0) t.set(x, y, vary([255, 214, 230], 6, t.rng));
+    }
+  },
+  cherry_sapling(t) {
+    t.clear();
+    t.sprite(['......LL........', '....LLLLL.......', '...LLPLLLL......', '....LLGLL.LL....', '......G..LLLL...', '......G.LLPL....', '.LL...G...G.....', 'LLPL..G..G......', '.LLLL.G.G.......', '...LGGGG........', '......G.........', '......G.........', '......G.........', '.....GG.........', '......G.........', '......G.........'], { L: [236, 140, 180], P: [255, 214, 230], G: [96, 62, 60] }, 2, 0);
+  },
   oak_sapling(t) {
     t.clear();
     t.sprite(['......LL........', '....LLLLL.......', '...LLLGLLL......', '....LLGLL.LL....', '......G..LLLL...', '......G.LLGL....', '.LL...G...G.....', 'LLLL..G..G......', '.LLLL.G.G.......', '...LGGGG........', '......G.........', '......G.........', '......G.........', '.....GG.........', '......G.........', '......G.........'], { L: [70, 140, 50], G: [96, 72, 40] }, 2, 0);
@@ -507,9 +522,12 @@ const P = {
       t.set(7, y, [120, 88, 52]);
       t.set(8, y, [96, 70, 40]);
     }
-    t.sprite(['.Y.', 'YWY', 'OYO', '.O.'], { Y: [255, 220, 90], W: [255, 255, 220], O: [240, 140, 40] }, 6, 2);
-    t.set(7, 6, [80, 60, 40]);
-    t.set(8, 6, [80, 60, 40]);
+    // The box is 10px tall (rows 6-15): its top three rows are the flame.
+    for (const x of [7, 8]) {
+      t.set(x, 6, [255, 250, 205]);
+      t.set(x, 7, [255, 218, 80]);
+      t.set(x, 8, [245, 150, 44]);
+    }
   },
   lantern(t) {
     t.clear();

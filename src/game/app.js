@@ -53,7 +53,7 @@ class MenuBackground {
       this.world.fillPad(cx, sy, cz, this.pad);
       this.renderer.uploadSection(key, cx, sy, cz, meshSection(this.pad, this.world.getChunk(cx, cz).climate));
     }
-    this.renderer.setEnvironment({ timeOfDay: 0.13, renderDistance: 3 });
+    this.renderer.setEnvironment({ timeOfDay: 0.455, renderDistance: 3 });
     this.renderer.updateParticles(dt, null);
     this.renderer.render({ x: pos.x, y: pos.y, z: pos.z, yaw: Math.PI / 2 - this.angle + Math.PI, pitch: -0.32 }, dt, { showHand: false });
   }
@@ -106,7 +106,7 @@ export class App {
   applySettings() {
     const s = this.settings;
     this.ui.applySettings(s);
-    this.renderer.setQuality({ pixelRatio: s.get('resolution'), clouds: s.get('clouds'), waterAnimation: s.get('waterAnimation') && !s.get('reducedMotion'), particles: s.get('particles') });
+    this.renderer.setQuality({ pixelRatio: s.get('resolution'), clouds: s.get('clouds'), waterAnimation: s.get('waterAnimation') && !s.get('reducedMotion'), particles: s.get('particles'), effects: s.get('effects') });
     this.renderer.setFov(s.get('fov'));
     const mode = s.get('controlsMode');
     const touchCapable = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;

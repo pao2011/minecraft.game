@@ -77,7 +77,7 @@ export const ENTITY_LIMITS = {
 };
 
 export const QUALITY_PRESETS = {
-  low: { renderDistance: 3, particles: 0.35, clouds: false, fancyLeaves: false, waterAnimation: false, pixelRatio: 0.75 },
-  medium: { renderDistance: 5, particles: 0.7, clouds: true, fancyLeaves: true, waterAnimation: true, pixelRatio: 1 },
-  high: { renderDistance: 7, particles: 1, clouds: true, fancyLeaves: true, waterAnimation: true, pixelRatio: 1.5 },
+  low: { renderDistance: 3, effects: 'off', particles: 0.35, clouds: false, fancyLeaves: false, waterAnimation: false, pixelRatio: 0.75 },
+  medium: { renderDistance: 5, effects: 'standard', particles: 0.7, clouds: true, fancyLeaves: true, waterAnimation: true, pixelRatio: 1 },
+  high: { renderDistance: 7, effects: 'ultra', particles: 1, clouds: true, fancyLeaves: true, waterAnimation: true, pixelRatio: 1.5 },
 };

@@ -148,9 +148,9 @@ for (const [setKey, set] of Object.entries(ARMOR_SETS)) {
 }
 
 // Wooden blocks burn in the furnace.
-for (const k of ['oak_log', 'pine_log', 'birch_log', 'dark_log']) ITEMS[k].fuel = 15;
-for (const k of ['oak_planks', 'pine_planks', 'birch_planks', 'dark_planks', 'workbench', 'chest', 'fence', 'plank_slab', 'plank_stairs', 'ladder', 'bookshelf']) ITEMS[k].fuel = 15;
-for (const k of ['oak_sapling', 'pine_sapling', 'birch_sapling', 'dark_sapling']) ITEMS[k].fuel = 5;
+for (const k of ['oak_log', 'pine_log', 'birch_log', 'dark_log', 'cherry_log']) ITEMS[k].fuel = 15;
+for (const k of ['oak_planks', 'pine_planks', 'birch_planks', 'dark_planks', 'cherry_planks', 'workbench', 'chest', 'fence', 'plank_slab', 'plank_stairs', 'ladder', 'bookshelf']) ITEMS[k].fuel = 15;
+for (const k of ['oak_sapling', 'pine_sapling', 'birch_sapling', 'dark_sapling', 'cherry_sapling']) ITEMS[k].fuel = 5;
 ITEMS.coal_block.fuel = 800;
 
 export const getItem = (key) => ITEMS[key] || null;

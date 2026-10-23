@@ -19,7 +19,7 @@ export const TILE_NAMES = [
   'verdant_block', 'ember_block', 'starstone_block', 'abyssal_block', 'quartz_block', 'quartz_pillar', 'cinderrock', 'lumen_stone',
   'magma', 'cinder_bricks', 'obsidian', 'void_stone', 'frame_top', 'frame_side', 'frame_eye', 'nether_portal',
   'end_portal', 'cobweb', 'potatoes_0', 'potatoes_1', 'potatoes_2', 'potatoes_3', 'void_crystal', 'tnt_side',
-  'tnt_top',
+  'tnt_top', 'cherry_log', 'cherry_log_top', 'cherry_planks', 'cherry_leaves', 'cherry_sapling',
 ];
 
 export const TILE = Object.fromEntries(TILE_NAMES.map((n, i) => [n, i]));

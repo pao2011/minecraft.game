@@ -321,3 +321,13 @@ details.adv summary { cursor: pointer; padding: 8px 0; color: var(--muted); font
 .bossbar .track i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #8a3fd8, #d070ff); transition: width 0.15s; }
 .portal-tint { position: absolute; inset: 0; background: radial-gradient(circle, rgba(150, 70, 230, 0.15), rgba(90, 20, 170, 0.75)); opacity: 0; }
 .t-swap { }
+
+/* ---- Place title, hotbar polish ---- */
+.zone-title { position: absolute; left: 0; right: 0; top: calc(16% + var(--safe-t)); text-align: center; pointer-events: none; opacity: 0; }
+.zone-title.on { animation: zone-in 4.2s ease-out forwards; }
+.zone-title .zname { font-size: clamp(1.5rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; text-shadow: 0 2px 14px rgba(0, 0, 0, 0.8), 0 0 28px rgba(255, 220, 150, 0.35); }
+.zone-title .zsub { margin-top: 4px; font-size: 0.9rem; letter-spacing: 0.3em; text-transform: uppercase; opacity: 0.8; text-shadow: 0 1px 6px #000; }
+@keyframes zone-in { 0% { opacity: 0; transform: translateY(-8px) scale(0.96); letter-spacing: 0.4em; } 14% { opacity: 1; transform: none; letter-spacing: 0.14em; } 72% { opacity: 1; } 100% { opacity: 0; } }
+.hslot.sel { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 0 14px rgba(255, 255, 255, 0.35); animation: sel-pulse 2.4s ease-in-out infinite; }
+@keyframes sel-pulse { 50% { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 20px rgba(255, 235, 170, 0.55); } }
+@media (prefers-reduced-motion: reduce) { .hslot.sel, .zone-title.on { animation: none; } .zone-title.on { opacity: 1; } }

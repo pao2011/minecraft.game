@@ -14,6 +14,9 @@ import { parsePosKey } from '../world/coords.js';
 
 const HOTBAR_FIRST = [...Array(36).keys()];
 
+// Creatures that emit light: their color goes above 1.0 so the glow pass picks them up.
+const GLOWING = { emberling: 1.7, magmaling: 1.5, wisp: 2.1, cinderhound: 1.15, void_drake: 1.1, voidstalker: 1.1 };
+
 export class EntityManager {
   constructor(game) {
     this.game = game;
@@ -64,6 +67,7 @@ export class EntityManager {
   /** Player melee hit. Returns true if the mob died. */
   attackMob(m, damage, from) {
     const killed = m.hurt(damage, from, 6);
+    this.game.ambient.hit(m.pos.x, m.pos.y + m.height * 0.6, m.pos.z);
     this.game.audio.play(`${m.def.sound}_hurt`, { pos: m.pos });
     if (killed) this.onDeath(m);
     return killed;
@@ -79,6 +83,7 @@ export class EntityManager {
     if (m.def.boss) this.game.onBossKilled?.(m);
     const b = this.lightAt(m.pos.x, m.pos.y + 0.5, m.pos.z);
     this.game.renderer.spawnBlockParticles(Math.floor(m.pos.x), Math.floor(m.pos.y), Math.floor(m.pos.z), TILE.wool, b * 0.8, 10);
+    this.game.ambient.poof(m.pos.x, m.pos.y + 0.2, m.pos.z, Math.max(0.4, b), m.def.boss ? 60 : 14);
     this.game.onMobKilled?.(m);
   }
 
@@ -125,7 +130,8 @@ export class EntityManager {
     let b = this.lightAt(m.pos.x, m.pos.y + m.height * 0.6, m.pos.z);
     if (m.hurtTimer > 0.2 || m.dead) material.color.setRGB(Math.min(1, b * 1.6 + 0.3), b * 0.35, b * 0.35);
     else if (m.burning && Math.sin(m.age * 25) > 0) material.color.setRGB(Math.min(1, b + 0.4), b * 0.7, b * 0.3);
-    else if (m.fuse >= 0 && Math.sin(m.age * 30) > 0) material.color.setRGB(1, 1, 1);
+    else if (m.fuse >= 0 && Math.sin(m.age * 30) > 0) material.color.setRGB(2.2, 2.2, 2.2);
+    else if (GLOWING[m.type]) material.color.setScalar(Math.max(b, GLOWING[m.type]));
     else if (m.def.fireImmune && this.game.dim === 'nether') material.color.setScalar(Math.max(b, 0.55));
     else material.color.setScalar(b);
     void dt;
@@ -202,6 +208,7 @@ export class EntityManager {
           const left = p.inventory.add(it.stack, HOTBAR_FIRST);
           if (left < it.stack.count) {
             this.game.audio.play('pickup');
+            this.game.ambient.pickup(it.pos.x, it.pos.y, it.pos.z);
             this.game.onPickup?.(it.stack.id, it.stack.count - left);
           }
           if (left === 0) {
@@ -520,6 +527,8 @@ export class EntityManager {
       else if (e.type === 'explode') this.game.explode(e.mob.pos, e.radius, { damage: 16 * diff.mobDamage, destroy: true, source: 'mob' });
       else if (e.type === 'teleport') {
         this.game.audio.play('portal', { pos: e.to, volume: 0.5 });
+        this.game.ambient.teleport(e.from.x, e.from.y, e.from.z);
+        this.game.ambient.teleport(e.to.x, e.to.y, e.to.z);
         this.game.renderer.spawnBlockParticles(Math.floor(e.from.x), Math.floor(e.from.y), Math.floor(e.from.z), TILE.obsidian, 0.8, 10);
         this.game.renderer.spawnBlockParticles(Math.floor(e.to.x), Math.floor(e.to.y), Math.floor(e.to.z), TILE.obsidian, 0.8, 10);
       }

@@ -130,6 +130,7 @@ export function settingsScreen(app, context, tabName = 'graphics') {
     if (tab === 'graphics') {
       body.append(
         seg('quality', 'Quality preset', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']], 'Sets the options below', (v) => { s.applyPreset(v); render(); }),
+        seg('effects', 'Visual effects', [['off', 'Off'], ['standard', 'Standard'], ['ultra', 'Ultra']], 'Glow, color grading, anti-aliasing (Ultra)'),
         slider('renderDistance', 'Render distance', 'Chunks of 16 blocks', (v) => `${v}`, 1),
         slider('resolution', 'Resolution scale', 'Lower is faster on older phones', pct, 0.05),
         slider('particles', 'Particles', null, pct),
